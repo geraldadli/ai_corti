@@ -1,6 +1,10 @@
 import json
+import sys
 from pathlib import Path
 from typing import Any, Dict, List
+
+APP_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(APP_DIR))
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -73,7 +77,7 @@ def render_result(result: Dict[str, Any]):
 
 # Sidebar bundle path
 st.sidebar.header('Bundle')
-defaul_bundle = Path('.')
+defaul_bundle = Path(__file__).resolve().parent
 bundle_dir = st.sidebar.text_input('Bundle folder', value=str(defaul_bundle))
 st.sidebar.caption('Folder must contain: stress_model.keras, model_config.json, stress_inference.py, results.html')
 
@@ -168,3 +172,5 @@ st.markdown('Notes')
 st.markdown('- Raw BVP and EDA are expected from the same session origin.')
 st.markdown('- Inference is attempted per 30s windows with 5s stride; early windows may return rejected status.')
 st.markdown('- Do not pre-normalize or convert features manually; use this pipeline output directly.')
+
+
