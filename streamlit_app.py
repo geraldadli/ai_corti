@@ -1,176 +1,152 @@
-import json
-import sys
-from pathlib import Path
-from typing import Any, Dict, List
+"""Streamlit app for WESAD BVP+EDA stress classification.
 
-APP_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(APP_DIR))
+Upload a wrist BVP trace (Empatica E4 style, 64 Hz) and an EDA trace (4 Hz)
+from the SAME recording session and get a class prediction (Baseline /
+Stress / Amusement) for every 30-second window, stepped every 5 seconds,
+using the bundled residual 1D-CNN + BiLSTM + attention model.
+"""
+from pathlib import Path
+import json
+
 import numpy as np
 import pandas as pd
 import streamlit as st
 
-from stress_inference import StressPredictor
+from stress_inference import StressPredictor, prepare_recording, window_at
+
+BUNDLE_DIR = Path(__file__).parent
+
+st.set_page_config(page_title="WESAD Stress Classifier", layout="wide")
 
 
-st.set_page_config(page_title='WESAD Stress Inference', page_icon='🫀', layout='wide')
-
-st.title('WESAD Stress Classifier')
-st.write('Raw BVP (64 Hz) + raw EDA (4 Hz) only. The predictor handles preprocessing, windowing and feature creation.')
-st.caption('Load model only when ready to run prediction. This keeps startup fast.')
+@st.cache_resource(show_spinner="Loading model...")
+def load_predictor() -> StressPredictor:
+    return StressPredictor(BUNDLE_DIR)
 
 
-@st.cache_resource(show_spinner=False)
-def load_predictor(bundle_dir: Path) -> StressPredictor:
-    import tensorflow as tf  # local import for lazy load
-    return StressPredictor(str(bundle_dir))
+def parse_signal(uploaded_file, expected_fs: float) -> np.ndarray:
+    """Parse a single-column signal file.
+
+    Accepts either:
+      * a plain list of numeric samples (one per line, optional header row), or
+      * the Empatica E4 export format (line 1: start unix timestamp,
+        line 2: sample rate, remaining lines: samples).
+    """
+    raw = uploaded_file.getvalue().decode("utf-8", errors="ignore").splitlines()
+    values = [line.strip().split(",")[0] for line in raw if line.strip() != ""]
+
+    def to_float(text):
+        try:
+            return float(text)
+        except ValueError:
+            return None
+
+    if len(values) >= 2:
+        first, second = to_float(values[0]), to_float(values[1])
+        if first is not None and second is not None and abs(second - expected_fs) < 1e-6:
+            values = values[2:]
+
+    numeric = []
+    for v in values:
+        f = to_float(v)
+        numeric.append(f if f is not None else np.nan)
+    return np.asarray(numeric, dtype=float)
 
 
-def parse_json_array(raw: str, name: str):
-    try:
-        data = json.loads(raw.strip())
-    except Exception as exc:
-        raise ValueError(f'Invalid JSON for {name}: {exc}') from exc
+def run_timeline(predictor: StressPredictor, bvp: np.ndarray, eda: np.ndarray) -> pd.DataFrame:
+    config = predictor.preprocessing
+    prepared = prepare_recording(bvp, eda, config)
+    duration = min(len(prepared["bvp"]) / config["bvp_fs"], len(prepared["eda"]) / config["eda_fs"])
+    last_end = np.floor(duration / config["stride_sec"]) * config["stride_sec"]
+    ends = np.arange(config["window_sec"], last_end + 1e-9, config["stride_sec"])
 
-    if isinstance(data, dict):
-        if 'values' not in data:
-            raise ValueError(f'{name} JSON must be a list or {{"values": [...]}}.')
-        data = data['values']
-
-    if not isinstance(data, list):
-        raise ValueError(f'{name} must be a list of numbers.')
-
-    arr = np.array(data, dtype=float)
-    if arr.ndim != 1:
-        raise ValueError(f'{name} must be a 1D list.')
-    if len(arr) == 0:
-        raise ValueError(f'{name} is empty.')
-    if not np.isfinite(arr).any():
-        raise ValueError(f'{name} has no finite values.')
-    return arr
-
-
-def render_result(result: Dict[str, Any]):
-    status = result.get('status', 'unknown')
-    if status != 'ok':
-        st.warning(f'Status: {status}')
-        st.caption('No prediction produced for this window.')
-        return
-
-    probs = result.get('probabilities', {}) or {}
-    class_id = result.get('class_id')
-    label = result.get('prediction')
-
-    st.success(f'Prediction: **{label}** (class_id={class_id})')
-    if 'quality_warning' in result and result['quality_warning']:
-        st.warning(f"Quality warning: {result['quality_warning']}")
-
-    st.write('Window')
-    st.write(f"{result.get('window_start_sec', 0):.2f}s to {result.get('window_end_sec', 0):.2f}s")
-
-    if probs:
-        st.write('Probabilities')
-        st.json(probs)
-        cols = st.columns(3)
-        for i, (k, v) in enumerate(probs.items()):
-            cols[i % 3].metric(k, f'{v*100:.2f}%')
+    rows = []
+    for end in ends:
+        inputs, status = window_at(prepared, float(end), config)
+        row = {"window_end_sec": float(end), "status": status}
+        if inputs is not None:
+            probabilities = predictor.model(
+                {k: v[None, ...] for k, v in inputs.items()}, training=False
+            ).numpy()[0]
+            index = int(np.argmax(probabilities))
+            row["prediction"] = predictor.labels[index]
+            for label, p in zip(predictor.labels, probabilities):
+                row[label] = float(p)
+        rows.append(row)
+    return pd.DataFrame(rows)
 
 
-# Sidebar bundle path
-st.sidebar.header('Bundle')
-defaul_bundle = Path(__file__).resolve().parent
-bundle_dir = st.sidebar.text_input('Bundle folder', value=str(defaul_bundle))
-st.sidebar.caption('Folder must contain: stress_model.keras, model_config.json, stress_inference.py, results.html')
-
-if not Path(bundle_dir).exists():
-    st.error('Bundle folder does not exist.')
-    st.stop()
-
-if 'predictor_loaded' not in st.session_state:
-    st.session_state.predictor_loaded = False
+st.title("WESAD HRV/EDA Stress Classifier")
+st.caption(
+    "Upload synchronized wrist BVP (64 Hz) and EDA (4 Hz) recordings from the same "
+    "session to classify Baseline / Stress / Amusement over sliding 30s windows."
+)
 
 with st.sidebar:
-    if st.button('Load predictor'):
-        try:
-            with st.spinner('Loading model and preprocessing runtime...'):
-                predictor = load_predictor(Path(bundle_dir))
-            st.session_state.predictor = predictor
-            st.session_state.predictor_loaded = True
-            st.success('Predictor loaded.')
-        except Exception as exc:
-            st.error(f'Could not load predictor from folder: {exc}')
-            st.session_state.predictor_loaded = False
-
-if not st.session_state.predictor_loaded:
-    st.info('Press "Load predictor" in the left sidebar, then upload data and run inference.')
-    st.stop()
-
-predictor = st.session_state.predictor
-
-# Quick diagnostics
-st.caption('Loaded model and preprocessing config:')
-st.json({
-    'labels': predictor.labels,
-})
-
-mode = st.radio('Input mode', ['Upload CSV', 'Paste JSON'])
-
-bvp = None
-eda = None
-
-if mode == 'Upload CSV':
-    file = st.file_uploader(
-        'Upload CSV with columns for BVP and EDA',
-        type=['csv']
+    st.header("Model info")
+    config = json.loads((BUNDLE_DIR / "model_config.json").read_text(encoding="utf-8"))
+    st.write(f"**Type:** {config['model_type']}")
+    st.write(f"**Classes:** {', '.join(config['class_names'])}")
+    st.write(f"**Window:** {config['preprocessing']['window_sec']}s, stride {config['preprocessing']['stride_sec']}s")
+    st.write(f"**Trained subjects:** {len(config['trained_subjects'])}")
+    st.markdown("---")
+    st.markdown(
+        "**Input file format**\n\n"
+        "One numeric sample per line (CSV first column). Either a plain list of "
+        "values, or an Empatica E4-style export whose first line is a start "
+        "timestamp and second line is the sample rate."
     )
-    if file is not None:
-        try:
-            df = pd.read_csv(file)
-        except Exception as exc:
-            st.error(f'Cannot read CSV: {exc}')
-            st.stop()
 
-        st.write('Detected columns:', list(df.columns))
-        col1, col2 = st.columns(2)
-        with col1:
-            bvp_col = st.selectbox('BVP column', df.columns, index=0)
-        with col2:
-            default_eda = 'EDA' if 'EDA' in df.columns else df.columns[1] if len(df.columns) > 1 else df.columns[0]
-            eda_col = st.selectbox('EDA column', df.columns, index=1 if len(df.columns) > 1 else 0)
+col1, col2 = st.columns(2)
+with col1:
+    bvp_file = st.file_uploader("BVP file (64 Hz)", type=["csv", "txt"])
+with col2:
+    eda_file = st.file_uploader("EDA file (4 Hz)", type=["csv", "txt"])
 
-        bvp = pd.to_numeric(df[bvp_col], errors='coerce').to_numpy(dtype=float)
-        eda = pd.to_numeric(df[eda_col], errors='coerce').to_numpy(dtype=float)
+if bvp_file is not None and eda_file is not None:
+    predictor = load_predictor()
+    bvp_fs = predictor.preprocessing["bvp_fs"]
+    eda_fs = predictor.preprocessing["eda_fs"]
 
-        # Optional diagnostic preview
-        st.dataframe(df[[bvp_col, eda_col]].head(10))
+    bvp = parse_signal(bvp_file, bvp_fs)
+    eda = parse_signal(eda_file, eda_fs)
+
+    st.write(
+        f"Loaded {len(bvp)} BVP samples ({len(bvp) / bvp_fs:.1f}s) and "
+        f"{len(eda)} EDA samples ({len(eda) / eda_fs:.1f}s)."
+    )
+
+    min_needed = predictor.preprocessing["window_sec"]
+    if len(bvp) / bvp_fs < min_needed or len(eda) / eda_fs < min_needed:
+        st.error(f"Need at least {min_needed}s of both signals to form one window.")
+    else:
+        with st.spinner("Running inference..."):
+            timeline = run_timeline(predictor, bvp, eda)
+
+        valid = timeline[timeline["status"] == "ok"]
+        if valid.empty:
+            st.warning(
+                "No window passed quality checks. Common causes: gaps, flat "
+                "signal, or insufficient warmup. Statuses seen: "
+                + ", ".join(sorted(timeline["status"].unique()))
+            )
+        else:
+            latest = valid.iloc[-1]
+            st.subheader(f"Latest window prediction: {latest['prediction']}")
+            prob_cols = st.columns(len(predictor.labels))
+            for c, label in zip(prob_cols, predictor.labels):
+                c.metric(label, f"{latest[label]:.1%}")
+
+            st.subheader("Class probability over time")
+            st.line_chart(valid.set_index("window_end_sec")[predictor.labels])
+
+            st.subheader("Per-window predictions")
+            display_cols = ["window_end_sec", "prediction"] + predictor.labels
+            st.dataframe(valid[display_cols], use_container_width=True)
+
+            skipped = timeline[timeline["status"] != "ok"]
+            if not skipped.empty:
+                with st.expander(f"{len(skipped)} window(s) skipped (quality gate)"):
+                    st.dataframe(skipped[["window_end_sec", "status"]], use_container_width=True)
 else:
-    c1, c2 = st.columns(2)
-    with c1:
-        bvp_json = st.text_area('BVP raw list (64 Hz)', height=220, value='[0.05, 0.04, 0.06, 0.07, ...]')
-    with c2:
-        eda_json = st.text_area('EDA raw list (4 Hz)', height=220, value='[0.4, 0.42, 0.41, 0.40, ...]')
-
-    if bvp_json.strip() and eda_json.strip():
-        try:
-            bvp = parse_json_array(bvp_json, 'BVP')
-            eda = parse_json_array(eda_json, 'EDA')
-        except Exception as exc:
-            st.error(str(exc))
-
-if st.button('Run Inference', type='primary'):
-    if bvp is None or eda is None:
-        st.warning('Provide both BVP and EDA first.')
-        st.stop()
-
-    try:
-        result = predictor.predict_latest(bvp, eda)
-        render_result(result)
-    except Exception as exc:
-        st.error(f'Inference failed: {exc}')
-
-st.markdown('---')
-st.markdown('Notes')
-st.markdown('- Raw BVP and EDA are expected from the same session origin.')
-st.markdown('- Inference is attempted per 30s windows with 5s stride; early windows may return rejected status.')
-st.markdown('- Do not pre-normalize or convert features manually; use this pipeline output directly.')
-
-
+    st.info("Upload both a BVP file and an EDA file to run the classifier.")
