@@ -1,10 +1,5 @@
-# Core app
 streamlit>=1.30
-
-# Data handling
-numpy>=1.24
-pandas>=2.0
-scipy>=1.10
-
-# Model inference
-tensorflow>=2.14
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.10.0
+tensorflow-cpu>=2.14.0,<2.20; python_version<'3.13'
