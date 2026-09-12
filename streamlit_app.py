@@ -1,10 +1,19 @@
 import json
 from pathlib import Path
 from typing import Any, Dict, List
+import sys
 
 import numpy as np
 import pandas as pd
 import streamlit as st
+
+try:
+    import tensorflow as tf
+except ModuleNotFoundError:
+    st.error("TensorFlow is not installed in this environment. "
+             "Install requirements for this folder with `pip install -r requirements.txt`, "
+             "or use a Python 3.11 environment where TensorFlow 2.14+ is supported.")
+    st.stop()
 
 from stress_inference import StressPredictor
 
@@ -13,6 +22,8 @@ st.set_page_config(page_title='WESAD Stress Inference', page_icon='🫀', layout
 
 st.title('WESAD Stress Classifier')
 st.write('Raw BVP (64 Hz) + raw EDA (4 Hz) only. The predictor handles preprocessing, windowing and feature creation.')
+
+st.caption(f'Runtime Python: {sys.version.split()[0]} | TensorFlow: {tf.__version__}')
 
 
 @st.cache_resource(show_spinner=False)
