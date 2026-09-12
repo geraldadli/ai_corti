@@ -1,19 +1,9 @@
 import json
 from pathlib import Path
 from typing import Any, Dict, List
-import sys
-
 import numpy as np
 import pandas as pd
 import streamlit as st
-
-try:
-    import tensorflow as tf
-except ModuleNotFoundError:
-    st.error("TensorFlow is not installed in this environment. "
-             "Install requirements for this folder with `pip install -r requirements.txt`, "
-             "or use a Python 3.11 environment where TensorFlow 2.14+ is supported.")
-    st.stop()
 
 from stress_inference import StressPredictor
 
@@ -22,12 +12,12 @@ st.set_page_config(page_title='WESAD Stress Inference', page_icon='🫀', layout
 
 st.title('WESAD Stress Classifier')
 st.write('Raw BVP (64 Hz) + raw EDA (4 Hz) only. The predictor handles preprocessing, windowing and feature creation.')
-
-st.caption(f'Runtime Python: {sys.version.split()[0]} | TensorFlow: {tf.__version__}')
+st.caption('Load model only when ready to run prediction. This keeps startup fast.')
 
 
 @st.cache_resource(show_spinner=False)
 def load_predictor(bundle_dir: Path) -> StressPredictor:
+    import tensorflow as tf  # local import for lazy load
     return StressPredictor(str(bundle_dir))
 
 
@@ -91,11 +81,26 @@ if not Path(bundle_dir).exists():
     st.error('Bundle folder does not exist.')
     st.stop()
 
-try:
-    predictor = load_predictor(Path(bundle_dir))
-except Exception as exc:
-    st.error(f'Could not load predictor from folder: {exc}')
+if 'predictor_loaded' not in st.session_state:
+    st.session_state.predictor_loaded = False
+
+with st.sidebar:
+    if st.button('Load predictor'):
+        try:
+            with st.spinner('Loading model and preprocessing runtime...'):
+                predictor = load_predictor(Path(bundle_dir))
+            st.session_state.predictor = predictor
+            st.session_state.predictor_loaded = True
+            st.success('Predictor loaded.')
+        except Exception as exc:
+            st.error(f'Could not load predictor from folder: {exc}')
+            st.session_state.predictor_loaded = False
+
+if not st.session_state.predictor_loaded:
+    st.info('Press "Load predictor" in the left sidebar, then upload data and run inference.')
     st.stop()
+
+predictor = st.session_state.predictor
 
 # Quick diagnostics
 st.caption('Loaded model and preprocessing config:')
