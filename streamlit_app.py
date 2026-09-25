@@ -27,6 +27,7 @@ STYLE = """<style>
 .main .block-container {width:100%;max-width:1280px;margin-inline:auto!important;padding:1.5rem clamp(1rem,3vw,2.5rem) 2rem;min-width:0;}
 h1,h2,h3,p,label,button {font-family:'DM Sans',sans-serif;}
 [data-testid="stSidebar"] {display:none;}
+video {display:block;width:100%;max-height:420px;border-radius:18px;background:#133c31;}
 .corti-nav {display:flex;align-items:center;justify-content:space-between;padding:0 0 24px;border-bottom:1px solid #dfe7df;gap:16px;}
 .brand {display:flex;align-items:center;gap:10px;font-size:25px;font-weight:700;letter-spacing:-1px;}
 .brand-mark {background:#1b4e40;color:#d6ecb6;border-radius:13px;width:39px;height:39px;display:grid;place-items:center;font-size:27px;font-weight:400;}
@@ -218,8 +219,15 @@ def run_timeline(predictor: StressPredictor, bvp: np.ndarray, eda: np.ndarray) -
 def main():
     st.set_page_config(page_title="AI Corti · Stress, understood", page_icon="🌿", layout="wide", initial_sidebar_state="collapsed")
     st.markdown(STYLE, unsafe_allow_html=True)
-    st.markdown('''<div class="corti-nav"><div class="brand"><span class="brand-mark" aria-hidden="true">∿</span>Corti <small>AI</small></div><div class="nav-note"><span class="dot"></span> Your signals. A little more clarity.</div></div>
-<div class="hero"><div><div class="eyebrow">Meet AI Corti</div><h1>Your signals.<br><em>Stress, understood.</em></h1><p>Turn your pulse and skin response into a simple picture of your stress patterns.</p><div class="tags"><span class="tag">Two signals, one insight</span><span class="tag">Powered by deep learning</span></div></div><div class="sensor-art" role="img" aria-label="Animated pulse illustration, not a live sensor reading"><div class="art-label">IN SYNC WITH YOU</div><div class="orbit outer"></div><div class="orbit"></div><div class="signal-line"></div><div class="pulse-core"><span aria-hidden="true">∿</span></div><div class="sensor-pill bvp">↝ &nbsp; Pulse · BVP</div><div class="sensor-pill eda">◌ &nbsp; Skin response · EDA</div><div class="art-bottom"><span>BODY SIGNALS, MADE SIMPLE</span><span>Signal illustration</span></div></div></div>
+    st.markdown('''<div class="corti-nav"><div class="brand"><span class="brand-mark" aria-hidden="true">∿</span>Corti <small>AI</small></div><div class="nav-note"><span class="dot"></span> Your signals. A little more clarity.</div></div>''', unsafe_allow_html=True)
+    st.markdown("### Meet AI Corti")
+    loop_trailer = st.checkbox("Loop trailer", value=True)
+    trailer = BUNDLE_DIR / "assets" / "corti-trailer.mp4"
+    if trailer.is_file():
+        st.video(str(trailer), loop=loop_trailer)
+    else:
+        st.caption("Trailer unavailable.")
+    st.markdown('''<div class="hero"><div><div class="eyebrow">Meet AI Corti</div><h1>Your signals.<br><em>Stress, understood.</em></h1><p>Turn your pulse and skin response into a simple picture of your stress patterns.</p><div class="tags"><span class="tag">Two signals, one insight</span><span class="tag">Powered by deep learning</span></div></div><div class="sensor-art" role="img" aria-label="Animated pulse illustration, not a live sensor reading"><div class="art-label">IN SYNC WITH YOU</div><div class="orbit outer"></div><div class="orbit"></div><div class="signal-line"></div><div class="pulse-core"><span aria-hidden="true">∿</span></div><div class="sensor-pill bvp">↝ &nbsp; Pulse · BVP</div><div class="sensor-pill eda">◌ &nbsp; Skin response · EDA</div><div class="art-bottom"><span>BODY SIGNALS, MADE SIMPLE</span><span>Signal illustration</span></div></div></div>
 <div class="section-title"><h2>Your Corti check-in</h2><span>A recording. An analysis. An insight.</span></div>''', unsafe_allow_html=True)
     try:
         config = json.loads((BUNDLE_DIR / "model_config.json").read_text(encoding="utf-8"))

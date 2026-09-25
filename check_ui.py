@@ -29,6 +29,10 @@ def check():
     path = Path(__file__).with_name("streamlit_app.py")
     app = AppTest.from_file(str(path), default_timeout=90).run()
     assert not app.exception and app.button[0].disabled
+    assert path.with_name("assets").joinpath("corti-trailer.mp4").is_file()
+    assert app.get("video")[0].proto.loop
+    app.checkbox[0].uncheck().run()
+    assert not app.exception and not app.get("video")[0].proto.loop
     assert [tab.label for tab in app.tabs] == ["Prediction flow", "Notebook · OSEMN", "Neural architecture"]
     diagrams = [item.value for item in app.markdown if '<ol class="pipeline"' in item.value]
     assert len(diagrams) == 3 and all('<li>' in diagram for diagram in diagrams)
