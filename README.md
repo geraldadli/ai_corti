@@ -16,10 +16,16 @@ A hybrid 1D-CNN + BiLSTM + attention model that classifies wrist-worn BVP (blood
 |---|---|
 | `hrv-based-stress-classification-using-the-wesad.ipynb` | End-to-end training pipeline: data ingestion, signal preprocessing, model definition, LOSO evaluation, final refit, and app bundle export. |
 | `stress_inference.py` | Shared preprocessing + inference module (identical code embedded in the notebook). Loads the bundled model and runs sliding-window predictions. |
+<<<<<<< Updated upstream
 | `streamlit_app.py` | Web UI — live ESP32 capture, uploaded BVP/EDA recordings, and sample demo. |
 | `live_capture.py`, `serial_component/` | Browser USB capture, sample validation/resampling, and live predictions. |
 | `arduino/corti_capture/corti_capture.ino` | ESP32 + MAX30102 + Grove GSR firmware. |
 | `LIVE_CAPTURE.md` | Wiring, calibration and live capture instructions. |
+=======
+| `streamlit_app.py` | Web UI — upload BVP/EDA files, view predictions and probability timelines. |
+| `assets/` | App stylesheet (`style.css`) and the trailer video. |
+| `check_ui.py` | App and inference checks — run `python check_ui.py`. |
+>>>>>>> Stashed changes
 | `stress_model.keras` | Trained model weights (final refit on all usable participants). |
 | `model_config.json` | Preprocessing parameters, class names, input shapes, trained-subject list, and integrity hashes tying the config to the model/inference code. |
 | `results.html` | Standalone results report: metrics, sensor-ablation analysis, and known limitations. |
@@ -33,7 +39,7 @@ A hybrid 1D-CNN + BiLSTM + attention model that classifies wrist-worn BVP (blood
 pip install -r requirements.txt
 ```
 
-(Python 3.11, TensorFlow 2.18 CPU, NumPy, SciPy, Pandas, Streamlit — see `requirements.txt` for pinned versions.)
+(Python 3.11, TensorFlow 2.18 CPU, NumPy, SciPy, Pandas, Streamlit, Plotly — see `requirements.txt` for pinned versions.)
 
 ### Run the demo app
 
@@ -41,7 +47,7 @@ pip install -r requirements.txt
 streamlit run streamlit_app.py
 ```
 
-Upload a BVP file (64 Hz) and an EDA file (4 Hz) from the **same recording session**. Files can be a plain list of numeric samples (one per line) or an Empatica E4-style export (timestamp header + sample rate + samples). The app reports a prediction per 30s window and flags windows that fail quality checks (signal gaps, flat segments, insufficient pulse quality, etc.).
+Upload a BVP file (64 Hz) and an EDA file (4 Hz) from the **same recording session**. Files can be a plain list of numeric samples (one per line) or an Empatica E4-style export (timestamp header + sample rate + samples). The app scores every 30s window and shows a **Stress / No stress** result for the latest usable one (No stress = Baseline + Amusement scores), with a stress-score gauge, a whole-recording summary and a CSV export of the full timeline. Windows with signal gaps, flat segments or missing samples are skipped; windows whose pulse looks irregular are scored but flagged.
 
 ### Use the inference module directly
 

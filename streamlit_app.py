@@ -8,93 +8,31 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from stress_inference import StressPredictor, prepare_recording, window_at
+from stress_inference import StressPredictor, prepare_recording, pulse_quality, window_at
 
 BUNDLE_DIR = Path(__file__).resolve().parent
+STYLE_PATH = BUNDLE_DIR / "assets" / "style.css"
+TRAILER_PATH = BUNDLE_DIR / "assets" / "corti-trailer.mp4"
+BATCH_SIZE = 64  # Same batch size the notebook uses to score held-out windows.
+UPLOAD, SAMPLE = "Upload recording", "Sample demo"
+INK, MUTED = "#183d36", "#60746b"
 COLORS = {"No stress": "#23796a", "Stress": "#b35a3b"}
 DESCRIPTIONS = {
     "No stress": "This window most closely matches a non-stress pattern.",
     "Stress": "This window most closely matches the model’s stress pattern.",
 }
-
-STYLE = """<style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
-:root {color-scheme:light;}
-.stApp {background:#f6f8f5;color:#183d36;font-family:'DM Sans',sans-serif;}
-[data-testid="stHeader"] {background:transparent;}
-[data-testid="stDecoration"] {background:#1b4e40;}
-.stAppViewMain {margin-inline:0!important;width:100%;min-width:0;}
-.main .block-container {width:100%;max-width:1280px;margin-inline:auto!important;padding:1.5rem clamp(1rem,3vw,2.5rem) 2rem;min-width:0;}
-h1,h2,h3,p,label,button {font-family:'DM Sans',sans-serif;}
-[data-testid="stSidebar"] {display:none;}
-video {display:block;width:100%;max-width:746px;height:auto;aspect-ratio:16/9;margin-inline:auto;border-radius:18px;}
-.corti-nav {display:flex;align-items:center;justify-content:space-between;padding:0 0 24px;border-bottom:1px solid #dfe7df;gap:16px;}
-.brand {display:flex;align-items:center;gap:10px;font-size:25px;font-weight:700;letter-spacing:-1px;}
-.brand-mark {background:#1b4e40;color:#d6ecb6;border-radius:13px;width:39px;height:39px;display:grid;place-items:center;font-size:27px;font-weight:400;}
-.brand small {font-size:11px;font-weight:700;letter-spacing:1px;background:#e5eadf;border-radius:5px;padding:4px 5px;margin-left:3px;}
-.nav-note {font-size:12px;color:#567168;display:flex;align-items:center;gap:8px;}
-.dot {display:inline-block;width:7px;height:7px;background:#43846b;border-radius:50%;}
-.hero {display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);align-items:center;gap:24px;padding:26px 0 24px;}
-.eyebrow {font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#597466;margin-bottom:14px;}
-.hero h1 {font-family:'Manrope',sans-serif;font-size:clamp(36px,4.5vw,54px);font-weight:600;line-height:1.13;letter-spacing:-2.7px;color:#183d36;margin:0 0 18px;padding:0;}
-.hero h1 em {font-style:normal;color:#5e886b;}
-.hero p {font-size:15px;line-height:1.7;color:#60746b;max-width:365px;margin:0;}
-.tags {display:flex;gap:8px;margin-top:21px;flex-wrap:wrap;}
-.tag {font-size:11px;padding:6px 10px;border:1px solid #dce5db;border-radius:20px;color:#486554;background:#fafbf8;}
-.sensor-art {height:262px;border-radius:28px;background:radial-gradient(ellipse at 50% 40%,#eef6e8 0,#e0ecdf 65%,#dae8dc 100%);position:relative;overflow:hidden;display:grid;place-items:center;border:1px solid #dce6d9;}
-.art-label {position:absolute;top:20px;left:22px;color:#55725e;font-size:10px;letter-spacing:1.8px;font-weight:600;}
-.art-bottom {position:absolute;bottom:18px;left:22px;right:22px;display:flex;justify-content:space-between;font-size:10px;color:#55725e;}
-.orbit {position:absolute;border:1px solid #527a5625;width:178px;height:178px;border-radius:50%;}
-.orbit.outer {width:245px;height:245px;border-style:dashed;animation:orbit 60s linear infinite;}
-.pulse-core {width:114px;height:114px;border-radius:50%;background:#1b4e40;box-shadow:0 10px 35px #214f4324;display:grid;place-items:center;animation:breathe 4s ease-in-out infinite;z-index:1;}
-.pulse-core span {color:#dbedb6;font-size:55px;line-height:1;}
-.signal-line {position:absolute;height:44px;width:100%;top:111px;opacity:.6;background:linear-gradient(90deg,transparent,#739c79,transparent);clip-path:polygon(0 49%,15% 49%,19% 35%,23% 65%,27% 49%,34% 49%,38% 10%,42% 90%,46% 49%,56% 49%,60% 35%,64% 65%,68% 49%,77% 49%,81% 10%,85% 90%,89% 49%,100% 49%,100% 53%,88% 53%,85% 98%,81% 18%,78% 53%,67% 53%,64% 73%,60% 43%,57% 53%,45% 53%,42% 98%,38% 18%,35% 53%,26% 53%,23% 73%,19% 43%,16% 53%,0 53%);}
-.sensor-pill {position:absolute;z-index:2;padding:8px 12px;border-radius:12px;background:#ffffffdf;box-shadow:0 4px 20px #3159470a;font-size:10px;color:#446c56;}
-.sensor-pill.bvp {left:25px;bottom:58px;}.sensor-pill.eda {right:24px;top:66px;}
-.section-title {display:flex;align-items:center;justify-content:space-between;margin:0 0 17px;}
-.section-title h2 {font-size:20px;letter-spacing:-.6px;font-weight:600;margin:0;padding:0;}
-.section-title span {font-size:11px;color:#738178;}
-[data-testid="stVerticalBlockBorderWrapper"]:has(>div>[data-testid="stVerticalBlock"]>div>[data-testid="stMarkdown"] .panel-heading) {border-color:#dde5dc!important;border-radius:20px!important;background:#fff;}
-.panel-heading {display:flex;align-items:center;gap:10px;margin-bottom:5px;font-size:17px;font-weight:600;letter-spacing:-.3px;}
-.step {background:#eef2e9;border-radius:8px;font-size:10px;letter-spacing:0;width:27px;height:27px;display:inline-grid;place-items:center;color:#4d7054;}
-.panel-sub {color:#738078;font-size:12px;margin:7px 0 18px;line-height:1.6;}
-.stRadio label p {font-size:12px!important;color:#355246;}
-[data-testid="stFileUploader"] label p {font-size:12px;font-weight:600;color:#38584b;}
-[data-testid="stFileUploaderDropzone"] {background:#f8faf6;border:1px dashed #cbd9ca;border-radius:12px;padding:15px;}
-[data-testid="stFileUploaderDropzone"] small {font-size:10px;}
-.stButton button {border-radius:10px;min-height:43px;font-size:13px;font-weight:600;}
-.stButton button[kind="primary"] {background:#1b4e40;border-color:#1b4e40;color:#fff;}
-.stButton button[kind="primary"]:hover {background:#2b6753;border-color:#2b6753;}
-.stButton button:focus-visible {outline:3px solid #85b39a;outline-offset:3px;}
-.stButton button:disabled {background:#e2e9df!important;border-color:#e2e9df!important;color:#6a7e6d!important;}
-.stCaption p {font-size:11px;color:#718074;}
-.empty-result {text-align:center;padding:38px 12px 26px;}
-.empty-ring {height:74px;width:74px;border:1px solid #d5e1d3;border-radius:50%;display:grid;place-items:center;margin:0 auto 22px;background:#f3f7ef;}
-.empty-ring span {font-size:29px;color:#719277;animation:breathe 4s ease-in-out infinite;}
-.empty-result h3 {font-size:19px;font-weight:500;color:#385747;margin:0 0 8px;}
-.empty-result p {color:#7a877d;font-size:12px;line-height:1.7;max-width:220px;margin:auto;}
-.result {padding:18px 2px 5px;animation:appear .45s ease-out;}
-.result-label {font-size:39px;letter-spacing:-1.8px;font-weight:600;margin:6px 0 8px;line-height:1.2;}
-.result-copy {font-size:12px;line-height:1.7;color:#687a70;margin-bottom:23px;}
-.score {margin:12px 0;}.score-caption {display:flex;justify-content:space-between;font-size:12px;color:#536b5b;margin-bottom:6px;}
-.score-track {height:5px;background:#edf1e9;border-radius:9px;overflow:hidden;}.score-fill {height:100%;border-radius:9px;}
-.demo-note {padding:18px;border:1px solid #dfe8d8;border-radius:12px;background:#f7faf2;color:#597050;font-size:12px;line-height:1.7;margin:13px 0;}
-.demo-note strong {display:block;color:#345638;font-size:15px;margin-bottom:7px;}
-.footer {margin-top:25px;padding-top:18px;border-top:1px solid #dfe7df;display:flex;justify-content:space-between;gap:14px;font-size:10px;color:#788579;line-height:1.6;}
-.footer b {color:#47634f;font-weight:600;white-space:nowrap;}
-.pipeline {display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:22px;list-style:none;padding:0!important;margin:18px 0 22px!important;}
-.pipeline li {margin:0!important;position:relative;background:#fff;border:1px solid #dce5db;border-radius:14px;padding:15px 12px;min-width:0;}
-.pipeline li:not(:last-child)::after {content:'→';position:absolute;right:-19px;top:42%;color:#60816b;font-size:19px;}
-.pipeline .phase {display:block;font-size:10px;color:#607866;text-transform:uppercase;letter-spacing:1px;margin-bottom:9px;}
-.pipeline strong {display:block;font-size:13px;color:#234c3e;line-height:1.4;margin-bottom:8px;}
-.pipeline p {font-size:12px;line-height:1.6;color:#5b7061;margin:0;}
-@media(max-width:900px){.pipeline{grid-auto-flow:row;grid-template-columns:1fr;gap:22px}.pipeline li:not(:last-child)::after{content:'↓';top:auto;bottom:-23px;left:50%;right:auto}}
-@keyframes breathe {0%,100%{transform:scale(1)}50%{transform:scale(1.065)}}
-@keyframes orbit {to{transform:rotate(360deg)}}
-@keyframes appear {from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;}}
-@media(max-width:640px){.block-container{padding:1.4rem 1rem}.hero{grid-template-columns:1fr;gap:24px;padding:28px 0}.hero h1{font-size:39px}.sensor-art{height:212px}.signal-line{top:87px}.nav-note{font-size:10px}.footer{flex-direction:column}.section-title span{display:none}}
-</style>"""
+# One set of stress-score bands drives both the gauge and the reaction card. The label
+# itself flips at 50%, so the middle band straddles that line instead of naming a class.
+BANDS = [(0.40, "calm", "#a8d1c5"), (0.60, "borderline", "#efd38a"), (1.00, "stress", "#e39a80")]
+REACTIONS = {
+    "calm": ("🌿", "No thoughts, head empty.",
+             "Peak baseline zen. This window sits comfortably on the no-stress side."),
+    "borderline": ("☕", "Could go either way… but that’s none of my business.",
+                   "This window sits close to the model’s 50% line. Its neighbours in Session details tell you more."),
+    "stress": ("🔥", "This is fine. (It might not be.)",
+               "This window closely matches the stress pattern. A five-minute break never hurt anyone. 🧘"),
+}
+ANALYSIS_SPINNER = "Analyzing physiological waves… checking whether you’re writing C code or watching a horror movie…"
 
 
 @st.cache_resource(show_spinner="Waking up AI Corti…")
@@ -150,6 +88,7 @@ def binary_scores(probabilities, labels):
             "Stress": float(scores["Stress"])}
 
 
+<<<<<<< Updated upstream
 def pipeline_diagram(steps):
     """An ordered, responsive block diagram; arrows are decorative CSS."""
     blocks = ''.join(f'<li><span class="phase">{escape(phase)}</span>'
@@ -194,6 +133,10 @@ def show_pipeline(config):
                 ("Output", "Three class scores", "Baseline · Stress · Amusement"),
             ])
             st.caption(f"Currently deployed: {model_name}. The diagram shows notebook v5.")
+=======
+def stress_band(score: float) -> str:
+    return next(name for upper, name, _ in BANDS if score <= upper)
+>>>>>>> Stashed changes
 
 
 def run_timeline(predictor: StressPredictor, bvp: np.ndarray, eda: np.ndarray) -> pd.DataFrame:
@@ -201,45 +144,65 @@ def run_timeline(predictor: StressPredictor, bvp: np.ndarray, eda: np.ndarray) -
     prepared = prepare_recording(bvp, eda, config)
     duration = min(len(bvp) / config["bvp_fs"], len(eda) / config["eda_fs"])
     ends = np.arange(config["window_sec"], duration + 1e-9, config["stride_sec"])
-    rows = []
+    rows, usable = [], []
     for end in ends:
         inputs, status = window_at(prepared, float(end), config)
         row = {"window_end_sec": float(end), "status": status}
         if inputs is not None:
-            probabilities = predictor.model({k: v[None, ...] for k, v in inputs.items()}, training=False).numpy()[0]
-            if not np.isfinite(probabilities).all():
-                raise ValueError("The model returned invalid scores. Check the model bundle.")
-            scores = binary_scores(probabilities, predictor.labels)
+            # Advisory beat check, as in StressPredictor.predict_latest: it flags, never rejects.
+            a, b = int((end - config["window_sec"]) * config["bvp_fs"]), int(end * config["bvp_fs"])
+            row["pulse"] = "regular" if pulse_quality(prepared["bvp"][a:b], config) else "irregular"
+            usable.append((row, inputs))
+        rows.append(row)
+    for start in range(0, len(usable), BATCH_SIZE):
+        batch = usable[start:start + BATCH_SIZE]
+        stacked = {name: np.stack([inputs[name] for _, inputs in batch]) for name in ("bvp", "eda")}
+        probabilities = predictor.model(stacked, training=False).numpy()
+        if not np.isfinite(probabilities).all():
+            raise ValueError("The model returned invalid scores. Check the model bundle.")
+        for (row, _), window_probabilities in zip(batch, probabilities):
+            scores = binary_scores(window_probabilities, predictor.labels)
             row["prediction"] = max(scores, key=scores.get)
             row.update(scores)
-        rows.append(row)
-    return pd.DataFrame(rows, columns=["window_end_sec", "status", "prediction", *COLORS])
+    return pd.DataFrame(rows, columns=["window_end_sec", "status", "prediction", *COLORS, "pulse"])
 
 
-def main():
-    st.set_page_config(page_title="AI Corti · Stress, understood", page_icon="🌿", layout="wide", initial_sidebar_state="collapsed")
-    st.markdown(STYLE, unsafe_allow_html=True)
-    st.markdown('''<div class="corti-nav"><div class="brand"><span class="brand-mark" aria-hidden="true">∿</span>Corti <small>AI</small></div><div class="nav-note"><span class="dot"></span> Your signals. A little more clarity.</div></div>''', unsafe_allow_html=True)
-    st.markdown("### Meet AI Corti")
-    loop_trailer = st.checkbox("Loop trailer", value=True)
-    trailer = BUNDLE_DIR / "assets" / "corti-trailer.mp4"
-    if trailer.is_file():
-        st.video(str(trailer), loop=loop_trailer)
-    else:
-        st.caption("Trailer unavailable.")
-    st.markdown('''<div class="hero"><div><div class="eyebrow">Meet AI Corti</div><h1>Your signals.<br><em>Stress, understood.</em></h1><p>Turn your pulse and skin response into a simple picture of your stress patterns.</p><div class="tags"><span class="tag">Two signals, one insight</span><span class="tag">Powered by deep learning</span></div></div><div class="sensor-art" role="img" aria-label="Animated pulse illustration, not a live sensor reading"><div class="art-label">IN SYNC WITH YOU</div><div class="orbit outer"></div><div class="orbit"></div><div class="signal-line"></div><div class="pulse-core"><span aria-hidden="true">∿</span></div><div class="sensor-pill bvp">↝ &nbsp; Pulse · BVP</div><div class="sensor-pill eda">◌ &nbsp; Skin response · EDA</div><div class="art-bottom"><span>BODY SIGNALS, MADE SIMPLE</span><span>Signal illustration</span></div></div></div>
-<div class="section-title"><h2>Your Corti check-in</h2><span>A recording. An analysis. An insight.</span></div>''', unsafe_allow_html=True)
+def input_fingerprint() -> str | None:
+    """Identify the selected input from widget state, so layout can be chosen before widgets render."""
+    if st.session_state.get("input_source") == SAMPLE:
+        return "synthetic-demo"
+    bvp_file, eda_file = st.session_state.get("bvp_upload"), st.session_state.get("eda_upload")
+    if bvp_file is None or eda_file is None:
+        return None
+    return sha256(bvp_file.getvalue() + b"\0" + eda_file.getvalue()).hexdigest()
+
+
+def current_result() -> pd.DataFrame | None:
+    """The saved timeline, only while it belongs to the inputs selected right now."""
+    saved = st.session_state.get("corti_analysis", {})
+    timeline, fingerprint = saved.get("timeline"), input_fingerprint()
+    if timeline is None or fingerprint is None or saved.get("fingerprint") != fingerprint:
+        return None
+    if not {"No stress", "pulse"} <= set(timeline.columns):
+        return None  # Discard a result retained from before the UI update.
+    return timeline
+
+
+def analyze(bvp: np.ndarray, eda: np.ndarray) -> None:
+    """Score every window, keep the result for this exact input, then reveal step 02."""
+    st.session_state.pop("corti_analysis", None)
     try:
-        config = json.loads((BUNDLE_DIR / "model_config.json").read_text(encoding="utf-8"))
-        preprocessing = config["preprocessing"]
-        labels = list(COLORS)
-        minimum = preprocessing["window_sec"] + preprocessing["warmup_sec"]
-    except (OSError, ValueError, KeyError) as exc:
-        st.error("AI Corti could not read its model configuration. Restore model_config.json from your bundle.")
+        with st.spinner(ANALYSIS_SPINNER):
+            timeline = run_timeline(load_predictor(), bvp, eda)
+    except Exception as exc:
+        st.error("We couldn’t analyze this recording. Check that your model files belong to the same bundle.")
         with st.expander("Technical details"):
             st.code(str(exc))
         return
+    st.session_state.corti_analysis = {"fingerprint": input_fingerprint(), "timeline": timeline}
+    st.rerun()  # Lay the page out again so both panels reflect the new result.
 
+<<<<<<< Updated upstream
     mode = st.radio("Capture mode", ["Recording", "Live Arduino"], horizontal=True)
     if mode == "Live Arduino":
         from live_capture import show_live
@@ -254,6 +217,73 @@ def main():
         st.markdown('<div class="panel-heading"><span class="step">01</span> Add your signals</div><div class="panel-sub">Start with a recording, or explore with a sample.</div>', unsafe_allow_html=True)
         source = st.radio("Input source", ["Upload recording", "Sample demo"], horizontal=True, label_visibility="collapsed")
         if source == "Upload recording":
+=======
+
+def render_style():
+    if STYLE_PATH.is_file():
+        st.markdown(f"<style>{STYLE_PATH.read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
+
+
+def render_nav():
+    st.markdown('<div class="corti-nav"><div class="brand"><span class="brand-mark" aria-hidden="true">∿</span>'
+                'Corti <small>AI</small></div></div>', unsafe_allow_html=True)
+
+
+def render_hero():
+    """1 · The motto, then what the project is in plain words."""
+    st.markdown('<div class="hero"><div class="eyebrow">Meet AI Corti</div>'
+                '<h1>Your signals.<br><em>Stress, understood.</em></h1>'
+                '<p>AI Corti reads two signals from a wrist sensor, your pulse (BVP) and skin response (EDA), '
+                'in 30-second windows. A deep-learning model trained on the WESAD lab study tells you whether '
+                'each window looks like stress.</p>'
+                '<div class="tags"><span class="tag">Pulse + skin response</span><span class="tag">30-second windows</span>'
+                '<span class="tag">Research prototype</span></div></div>', unsafe_allow_html=True)
+
+
+def render_trailer():
+    if not TRAILER_PATH.is_file():
+        st.caption("Trailer unavailable.")
+        return
+    player = st.container()  # Filled after the toggle, so the control sits below the video.
+    loop = st.toggle("Loop trailer", value=True, key="loop_trailer")
+    player.video(str(TRAILER_PATH), loop=loop)
+
+
+def render_intro(config):
+    """2 · Learn first: the trailer beside the layered pipeline."""
+    video, pipeline = st.columns([1.2, 1], gap="large")
+    with video:
+        st.markdown('<div class="eyebrow">Watch the intro · 1 min</div>', unsafe_allow_html=True)
+        render_trailer()
+    with pipeline:
+        st.markdown('<div class="eyebrow">How it works</div>', unsafe_allow_html=True)
+        render_how_it_works(config)
+
+
+def render_pulse_badge(timeline: pd.DataFrame):
+    valid = timeline[timeline["status"] == "ok"]
+    if valid.empty:
+        return
+    irregular = int((valid["pulse"] == "irregular").sum())
+    if irregular:
+        state, text = "irregular", f"Irregular in {irregular} of {len(valid)} windows"
+    else:
+        state, text = "regular", "Regular"
+    st.markdown(f'<div class="pulse-badge {state}"><span class="pulse-dot"></span>Pulse quality · {text}</div>',
+                unsafe_allow_html=True)
+
+
+def render_uploader(preprocessing, minimum: float, timeline: pd.DataFrame | None):
+    """Step 01: choose a recording or the sample, then analyze it."""
+    with st.container(border=True):
+        st.markdown('<div class="panel-heading"><span class="step">01</span> Add your signals</div>'
+                    '<div class="panel-sub">Start with a recording, or explore with a sample.</div>',
+                    unsafe_allow_html=True)
+        source = st.radio("Input source", [UPLOAD, SAMPLE], horizontal=True, label_visibility="collapsed",
+                          key="input_source")
+        bvp, eda, error = None, None, None
+        if source == UPLOAD:
+>>>>>>> Stashed changes
             bvp_file = st.file_uploader(f"Pulse / BVP · {preprocessing['bvp_fs']:g} Hz", type=["csv", "txt"], key="bvp_upload")
             eda_file = st.file_uploader(f"Skin response / EDA · {preprocessing['eda_fs']:g} Hz", type=["csv", "txt"], key="eda_upload")
             st.caption(f"Same session and start time · at least {minimum:g} seconds each")
@@ -267,62 +297,178 @@ def main():
                         raise ValueError("The two files must share the same start time and metadata format. Export synchronized recordings.")
                     if min(len(bvp) / preprocessing["bvp_fs"], len(eda) / preprocessing["eda_fs"]) < minimum:
                         raise ValueError(f"Add at least {minimum:g} seconds of both signals, including filter warmup.")
-                    fingerprint = sha256(bvp_file.getvalue() + b"\0" + eda_file.getvalue()).hexdigest()
                 except (ValueError, UnicodeError) as exc:
                     error = str(exc)
         else:
             st.markdown('<div class="demo-note"><strong>A first look at Corti.</strong>Explore the experience with generated pulse and skin-response signals. The model analyzes them just like an upload.<br><br>Illustrative demo · not a person’s measurement or an accuracy test.</div>', unsafe_allow_html=True)
             bvp, eda = demo_signals(preprocessing)
-            fingerprint = "synthetic-demo"
         if error:
             st.warning(error)
-        analyze = st.button("Analyze sample" if source == "Sample demo" else "Analyze recording", type="primary", use_container_width=True, disabled=fingerprint is None)
-        if analyze:
-            st.session_state.pop("corti_analysis", None)
-            try:
-                with st.spinner("Reading your signals…"):
-                    timeline = run_timeline(load_predictor(), bvp, eda)
-                    st.session_state.corti_analysis = {"fingerprint": fingerprint, "timeline": timeline}
-            except Exception as exc:
-                st.error("We couldn’t analyze this recording. Check that your model files belong to the same bundle.")
-                with st.expander("Technical details"):
-                    st.code(str(exc))
+        if timeline is not None:
+            render_pulse_badge(timeline)
+        label = "Analyze sample" if source == SAMPLE else "Analyze recording"
+        if st.button(label, type="primary", use_container_width=True, disabled=bvp is None or error is not None):
+            analyze(bvp, eda)
 
-    saved = st.session_state.get("corti_analysis", {})
-    timeline = saved.get("timeline") if fingerprint is not None and saved.get("fingerprint") == fingerprint else None
-    if timeline is not None and "No stress" not in timeline.columns:
-        timeline = None  # Discard a three-class result retained from before the UI update.
-    with right, st.container(border=True):
-        st.markdown('<div class="panel-heading"><span class="step">02</span> Your insight</div><div class="panel-sub">A snapshot of the latest usable signal window.</div>', unsafe_allow_html=True)
+
+def render_speedometer_gauge(score: float):
+    """Semi-circle dial for one window's stress score; the needle points at 0–100%."""
+    import plotly.graph_objects as go  # Local import: only the results panel needs Plotly.
+
+    percent = 100 * float(np.clip(score, 0, 1))
+    active = stress_band(score)
+    figure = go.Figure()
+    lower = 0.
+    for upper, name, color in BANDS:
+        # Angles run clockwise from 0% on the left to 100% on the right.
+        figure.add_trace(go.Barpolar(r=[.34], base=[.66], theta=[90 * (lower + upper)], width=[180 * (upper - lower)],
+                                     marker=dict(color=color, line=dict(color="#ffffff", width=3)),
+                                     opacity=1 if name == active else .35, hoverinfo="skip"))
+        lower = upper
+    figure.add_trace(go.Scatterpolar(r=[0, .86], theta=[1.8 * percent] * 2, mode="lines",
+                                     line=dict(color=INK, width=4), hoverinfo="skip"))
+    figure.add_trace(go.Scatterpolar(r=[0], theta=[0], mode="markers", marker=dict(color=INK, size=14),
+                                     hoverinfo="skip"))
+    figure.update_layout(
+        height=200, margin=dict(l=28, r=28, t=6, b=0), showlegend=False, paper_bgcolor="rgba(0,0,0,0)",
+        transition=dict(duration=600, easing="cubic-in-out"),
+        polar=dict(sector=[0, 180], bgcolor="rgba(0,0,0,0)", radialaxis=dict(range=[0, 1], visible=False),
+                   angularaxis=dict(rotation=180, direction="clockwise", tickvals=[0, 72, 108, 180],
+                                    ticktext=["0", "40", "60", "100"], ticks="", showgrid=False, showline=False,
+                                    tickfont=dict(size=11, color=MUTED))))
+    st.plotly_chart(figure, use_container_width=True, theme=None, config={"displayModeBar": False, "staticPlot": True})
+    st.markdown(f'<div class="gauge-readout"><b style="color:{INK}">{percent:.0f}%</b><span>stress score</span></div>',
+                unsafe_allow_html=True)
+
+
+def render_meme_reaction(score: float):
+    band = stress_band(score)
+    emoji, title, body = REACTIONS[band]
+    st.markdown(f'<div class="reaction {band}"><span class="reaction-emoji" aria-hidden="true">{emoji}</span>'
+                f'<div><b>{escape(title)}</b><p>{escape(body)}</p></div></div>', unsafe_allow_html=True)
+
+
+def render_results(timeline: pd.DataFrame | None, preprocessing, source: str):
+    """Step 02: a waiting state until analysis, then the latest usable window, the whole recording and an export."""
+    labels = list(COLORS)
+    with st.container(border=True):
+        st.markdown('<div class="panel-heading"><span class="step">02</span> Your insight</div>'
+                    '<div class="panel-sub">A snapshot of the latest usable signal window.</div>',
+                    unsafe_allow_html=True)
         if timeline is None:
-            hint = "Select Analyze sample to explore your first Corti insight." if source == "Sample demo" else "Add both signals and select Analyze to see your result here."
-            st.markdown(f'<div class="empty-result"><div class="empty-ring"><span aria-hidden="true">∿</span></div><h3>A little clarity awaits.</h3><p>{hint}</p></div>', unsafe_allow_html=True)
+            hint = ("Select Analyze sample to explore your first Corti insight." if source == SAMPLE
+                    else "Add both signals and select Analyze to see your result here.")
+            st.markdown(f'<div class="empty-result"><div class="empty-ring"><span aria-hidden="true">∿</span></div>'
+                        f'<h3>A little clarity awaits.</h3><p>{hint}</p></div>', unsafe_allow_html=True)
+            return
+        valid = timeline[timeline["status"] == "ok"]
+        if valid.empty:
+            st.warning("No usable window yet. Check sensor contact, missing samples and recording length, then try again.")
         else:
-            valid = timeline[timeline["status"] == "ok"]
-            if valid.empty:
-                st.warning("No usable window yet. Check sensor contact, missing samples and recording length, then try again.")
+            latest = valid.iloc[-1]
+            label, score = str(latest["prediction"]), float(np.clip(latest["Stress"], 0, 1))
+            end = latest["window_end_sec"]
+            context = "SAMPLE DEMO" if source == SAMPLE else "RECORDING RESULT"
+            if latest["pulse"] == "irregular":
+                signal_check = '<div class="signal-note" role="note"><span aria-hidden="true">⚠</span><div><b>Irregular pulse in this window</b>The pulse didn’t look like a steady heartbeat, often from movement or a loose sensor. Read this result with extra caution.</div></div>'
             else:
-                latest = valid.iloc[-1]
-                label = str(latest["prediction"])
-                color = COLORS.get(label, "#23796a")
-                end = latest["window_end_sec"]
-                context = "SAMPLE DEMO" if source == "Sample demo" else "RECORDING RESULT"
-                st.markdown(f'<div class="result"><div class="eyebrow">{context} · {end-preprocessing["window_sec"]:g}–{end:g} SEC</div><div class="result-label" style="color:{color}">{escape(label)}</div><div class="result-copy">{escape(DESCRIPTIONS.get(label, "The model’s closest matching pattern."))}</div></div>', unsafe_allow_html=True)
-                for name in labels:
-                    score = float(np.clip(latest[name], 0, 1))
-                    st.markdown(f'<div class="score"><div class="score-caption"><span>{escape(name)}</span><span>{score:.0%}</span></div><div class="score-track"><div class="score-fill" style="width:{score*100:.2f}%;background:{COLORS.get(name, "#23796a")}"></div></div></div>', unsafe_allow_html=True)
-                st.caption("Relative model scores · not certainty or cortisol levels")
-                if timeline.iloc[-1]["status"] != "ok":
-                    st.caption("The end of this recording did not pass signal checks. Showing the most recent usable window.")
-            with st.expander("Session details"):
-                if not valid.empty:
-                    st.line_chart(valid.set_index("window_end_sec")[labels], color=[COLORS.get(name, "#23796a") for name in labels], x_label="Seconds into recording", y_label="Model score")
-                skipped = int((timeline["status"] != "ok").sum())
-                st.caption(f"{len(valid)} usable windows · {skipped} skipped (including warmup)")
-                st.dataframe(timeline, hide_index=True, use_container_width=True)
+                signal_check = '<div class="signal-ok"><span aria-hidden="true">✓</span> Regular pulse signal</div>'
+            st.markdown(f'<div class="result"><div class="eyebrow">{context} · {end-preprocessing["window_sec"]:g}–{end:g} SEC</div><div class="result-label" style="color:{COLORS.get(label, INK)}">{escape(label)}</div><div class="result-copy">{escape(DESCRIPTIONS.get(label, "The model’s closest matching pattern."))}</div>{signal_check}</div>', unsafe_allow_html=True)
+            render_speedometer_gauge(score)
+            st.caption("Relative model score · not certainty or cortisol levels")
+            render_meme_reaction(score)
+            stressed = int((valid["prediction"] == "Stress").sum())
+            windows = f"{len(valid)} usable window{'s' if len(valid) != 1 else ''}"
+            st.markdown(f'<div class="session-summary"><b>Whole recording</b> · Stress in {stressed} of {windows} ({stressed / len(valid):.0%})</div>', unsafe_allow_html=True)
+            if timeline.iloc[-1]["status"] != "ok":
+                st.caption("The end of this recording did not pass signal checks. Showing the most recent usable window.")
+        st.download_button("Download timeline (CSV)", timeline.to_csv(index=False), file_name="corti-timeline.csv",
+                           mime="text/csv", use_container_width=True)
+        with st.expander("Session details"):
+            if not valid.empty:
+                st.line_chart(valid.set_index("window_end_sec")[labels], color=[COLORS[name] for name in labels], x_label="Seconds into recording", y_label="Model score")
+            skipped = int((timeline["status"] != "ok").sum())
+            irregular = int((valid["pulse"] == "irregular").sum())
+            st.caption(f"{len(valid)} usable windows · {irregular} with an irregular pulse · {skipped} skipped (including warmup)")
+            st.dataframe(timeline, hide_index=True, use_container_width=True)
 
-    show_pipeline(config)
+
+def pipeline_diagram(steps):
+    """An ordered stack of layers; the connectors and deepening tints are decorative CSS."""
+    blocks = ''.join(f'<li><span class="phase">{escape(phase)}</span>'
+                     f'<div><strong>{escape(title)}</strong><p>{escape(detail)}</p></div></li>'
+                     for phase, title, detail in steps)
+    st.markdown(f'<ol class="pipeline">{blocks}</ol>', unsafe_allow_html=True)
+
+
+def render_how_it_works(config):
+    c = config["preprocessing"]
+    model_type = config.get("model_type", "Unspecified model")
+    model_name = {"residual_1d_cnn_bilstm_attention": "CNN–BiLSTM + attention"}.get(
+        model_type, model_type.replace("_", " "))
+    prediction, notebook, architecture = st.tabs(["Prediction flow", "Notebook · OSEMN", "Neural architecture"])
+    with prediction:
+        pipeline_diagram([
+            ("01", "Upload signals", "Pulse (BVP) + skin response (EDA)"),
+            ("02", "Clean", "Filter noise and check signal quality"),
+            ("03", "Create windows", f"{c['window_sec']:g}s windows, every {c['stride_sec']:g}s"),
+            ("04", "Prepare inputs", "Normalize BVP + derive EDA channels"),
+            ("05", "Run AI model", "Predict the three trained states"),
+            ("06", "Show result", "Stress or No stress"),
+        ])
+        st.caption("No stress = Baseline + Amusement scores.")
+    with notebook:
+        pipeline_diagram([
+            ("O · Obtain", "Collect", "WESAD signals + ground-truth labels"),
+            ("S · Scrub", "Prepare", "Align, filter and label windows"),
+            ("E · Explore", "Inspect", "Signal quality + class balance"),
+            ("M · Model", "Train & tune", "Test on held-out participants"),
+            ("N · Interpret", "Evaluate", "Precision, recall + confusion matrix"),
+        ])
+        st.caption("Then: select settings → refit on all usable participants → export the app bundle.")
+    with architecture:
+        pipeline_diagram([
+            ("Input", "BVP + EDA", f"{c['window_sec']:g}s of pulse ({c['bvp_fs']:g} Hz) + skin response ({c['eda_fs']:g} Hz)"),
+            ("Features", "Residual 1D-CNNs", "One tower per sensor learns local patterns"),
+            ("Fusion", "Concatenate", "Both sensors aligned in time"),
+            ("Sequence", "BiLSTM + attention", "Focus on the most telling moments"),
+            ("Output", "Three class scores", "Baseline · Stress · Amusement"),
+        ])
+        participants = len(config.get("trained_subjects", []))
+        trained = f", trained on {participants} WESAD participants" if participants else ""
+        st.caption(f"Deployed model: {model_name}{trained}.")
+
+
+def render_footer():
     st.markdown('<div class="footer"><b>AI Corti · Stress, understood.</b><span>Research prototype. Estimates stress patterns from BVP + EDA; does not measure cortisol or provide a diagnosis.</span></div>', unsafe_allow_html=True)
+
+
+def main():
+    st.set_page_config(page_title="AI Corti · Stress, understood", page_icon="🌿", layout="wide", initial_sidebar_state="collapsed")
+    render_style()
+    render_nav()
+    render_hero()
+    try:
+        config = json.loads((BUNDLE_DIR / "model_config.json").read_text(encoding="utf-8"))
+        preprocessing = config["preprocessing"]
+        minimum = preprocessing["window_sec"] + preprocessing["warmup_sec"]
+    except (OSError, ValueError, KeyError) as exc:
+        st.error("AI Corti could not read its model configuration. Restore model_config.json from your bundle.")
+        with st.expander("Technical details"):
+            st.code(str(exc))
+        return
+
+    render_intro(config)
+    st.markdown('<div class="section-title"><h2>Your Corti check-in</h2>'
+                '<span>A recording. An analysis. An insight.</span></div>', unsafe_allow_html=True)
+    timeline = current_result()
+    # 3 · Both steps stay in view: the insight panel waits beside the input until there is a result.
+    left, right = st.columns([1.1, 1], gap="medium")
+    with left:
+        render_uploader(preprocessing, minimum, timeline)
+    with right:
+        render_results(timeline, preprocessing, st.session_state.get("input_source", UPLOAD))
+    render_footer()
 
 
 if __name__ == "__main__":
