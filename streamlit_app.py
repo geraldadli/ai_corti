@@ -27,7 +27,7 @@ STYLE = """<style>
 .main .block-container {width:100%;max-width:1280px;margin-inline:auto!important;padding:1.5rem clamp(1rem,3vw,2.5rem) 2rem;min-width:0;}
 h1,h2,h3,p,label,button {font-family:'DM Sans',sans-serif;}
 [data-testid="stSidebar"] {display:none;}
-video {display:block;width:100%;max-height:420px;border-radius:18px;background:#133c31;}
+video {display:block;width:100%;max-width:746px;height:auto;aspect-ratio:16/9;margin-inline:auto;border-radius:18px;}
 .corti-nav {display:flex;align-items:center;justify-content:space-between;padding:0 0 24px;border-bottom:1px solid #dfe7df;gap:16px;}
 .brand {display:flex;align-items:center;gap:10px;font-size:25px;font-weight:700;letter-spacing:-1px;}
 .brand-mark {background:#1b4e40;color:#d6ecb6;border-radius:13px;width:39px;height:39px;display:grid;place-items:center;font-size:27px;font-weight:400;}
