@@ -167,7 +167,7 @@ def show_pipeline(config):
         prediction, notebook, architecture = st.tabs(["Prediction flow", "Notebook · OSEMN", "Neural architecture"])
         with prediction:
             pipeline_diagram([
-                ("01", "Upload signals", "Pulse (BVP) + skin response (EDA)"),
+                ("01", "Capture signals", "Live Arduino or BVP + EDA upload"),
                 ("02", "Clean", "Filter noise and check signal quality"),
                 ("03", "Create windows", f"{c['window_sec']:g}s windows, every {c['stride_sec']:g}s"),
                 ("04", "Prepare inputs", "Normalize BVP + derive EDA channels"),
@@ -240,6 +240,14 @@ def main():
             st.code(str(exc))
         return
 
+    mode = st.radio("Capture mode", ["Recording", "Live Arduino"], horizontal=True)
+    if mode == "Live Arduino":
+        from live_capture import show_live
+        show_live(load_predictor, binary_scores, preprocessing)
+        show_pipeline(config)
+        st.caption("AI Corti · Research prototype. Does not measure cortisol or provide a diagnosis.")
+        return
+    st.session_state.pop("corti_live", None)
     left, right = st.columns([1.1, 1], gap="medium")
     fingerprint, bvp, eda, error = None, None, None, None
     with left, st.container(border=True):

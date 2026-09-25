@@ -1,0 +1,20 @@
+// Run: node serial_component/check_serial.cjs
+const assert = require("node:assert/strict");
+const {CortiSession} = require("./serial.js");
+const s = new CortiSession();
+assert.equal(s.accept("boot text"), false);
+s.accept("CORTI,1,64,4,1,1023");
+assert.equal(s.header.calibrated, true);
+assert.equal(s.accept("0,0,500,2.5,450"), true);
+assert.equal(s.accept("broken,line"), false);
+assert.equal(s.accept("2,31250,510,nan,nan"), true);
+assert.deepEqual(s.rows[1], [2,31250,510,null,null]);
+assert.throws(() => s.accept("1,15625,500,nan,nan"));
+assert.throws(() => s.accept("CORTI,1,64,4,1,1023"));
+assert.throws(() => s.accept("38400,600000000,500,nan,nan"));
+assert.throws(() => new CortiSession().accept("CORTI,1,50,4,1,1023"));
+const max = new CortiSession();
+max.accept("CORTI,1,100,4,0,262143");
+assert.equal(max.header.calibrated, false);
+assert.equal(max.accept("0,0,50000,nan,500"), true);
+console.log("PASS: serial handshake, gaps, missing values, resets and session cap");

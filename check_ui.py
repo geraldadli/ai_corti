@@ -39,7 +39,7 @@ def check():
     assert any('No stress = Baseline + Amusement' in item.value for item in app.caption)
     assert any('Currently deployed:' in item.value for item in app.caption)
     assert "tensorflow" not in sys.modules, "Landing page eagerly loaded TensorFlow"
-    app.radio[0].set_value("Sample demo").run()
+    app.radio[1].set_value("Sample demo").run()
     assert not app.button[0].disabled
     app.button[0].click().run()
     assert not app.exception and not app.error, [x.value for x in app.error]
@@ -49,10 +49,13 @@ def check():
     assert "Baseline" not in result.columns and "Amusement" not in result.columns
     assert np.allclose(valid[list(ui.COLORS)].sum(axis=1), 1, atol=1e-5)
     assert any("SAMPLE DEMO" in x.value for x in app.markdown)
-    app.radio[0].set_value("Upload recording").run()
+    app.radio[1].set_value("Upload recording").run()
     assert not app.exception and app.button[0].disabled
     assert any("A little clarity awaits" in x.value for x in app.markdown)
     assert not any("result-label" in x.value for x in app.markdown if "<style>" not in x.value)
+    app.radio[0].set_value("Live Arduino").run()
+    assert not app.exception and len(app.get("component_instance")) == 1
+    assert any("Connect Arduino to begin" in x.value for x in app.info)
 
     # The actual saved model is exercised above; test rejection with flat signals too.
     import json

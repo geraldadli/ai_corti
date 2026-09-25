@@ -5,7 +5,7 @@ A hybrid 1D-CNN + BiLSTM + attention model that classifies wrist-worn BVP (blood
 ## Overview
 
 - **Input:** synchronized wrist BVP (64 Hz) and EDA (4 Hz) recordings, Empatica E4-style.
-- **Output:** a Baseline / Stress / Amusement prediction (+ class probabilities) for every 30-second window, stepped every 5 seconds.
+- **App output:** Stress / No stress for each 30-second window, stepped every 5 seconds. The trained model retains three classes; the app sums Baseline + Amusement probabilities into No stress.
 - **Model:** parallel residual 1D-CNN towers for BVP and EDA → fusion → BiLSTM → temporal attention pooling → dense classifier.
 - **Evaluation:** Leave-One-Subject-Out (LOSO) cross-validation across 15 participants — subject-mean macro F1 **0.600** (95% CI 0.536–0.662), accuracy **0.673**, ROC-AUC **0.830**. See `results.html` for full details.
 - **Design principle:** the exact preprocessing code used in training is exported byte-for-byte into `stress_inference.py`, so the served app can never silently drift from what was evaluated.
@@ -16,7 +16,10 @@ A hybrid 1D-CNN + BiLSTM + attention model that classifies wrist-worn BVP (blood
 |---|---|
 | `hrv-based-stress-classification-using-the-wesad.ipynb` | End-to-end training pipeline: data ingestion, signal preprocessing, model definition, LOSO evaluation, final refit, and app bundle export. |
 | `stress_inference.py` | Shared preprocessing + inference module (identical code embedded in the notebook). Loads the bundled model and runs sliding-window predictions. |
-| `streamlit_app.py` | Web UI — upload BVP/EDA files, view predictions and probability timelines. |
+| `streamlit_app.py` | Web UI — live ESP32 capture, uploaded BVP/EDA recordings, and sample demo. |
+| `live_capture.py`, `serial_component/` | Browser USB capture, sample validation/resampling, and live predictions. |
+| `arduino/corti_capture/corti_capture.ino` | ESP32 + MAX30102 + Grove GSR firmware. |
+| `LIVE_CAPTURE.md` | Wiring, calibration and live capture instructions. |
 | `stress_model.keras` | Trained model weights (final refit on all usable participants). |
 | `model_config.json` | Preprocessing parameters, class names, input shapes, trained-subject list, and integrity hashes tying the config to the model/inference code. |
 | `results.html` | Standalone results report: metrics, sensor-ablation analysis, and known limitations. |
@@ -41,6 +44,8 @@ streamlit run streamlit_app.py
 Upload a BVP file (64 Hz) and an EDA file (4 Hz) from the **same recording session**. Files can be a plain list of numeric samples (one per line) or an Empatica E4-style export (timestamp header + sample rate + samples). The app reports a prediction per 30s window and flags windows that fail quality checks (signal gaps, flat segments, insufficient pulse quality, etc.).
 
 ### Use the inference module directly
+
+For live sensors, follow [the ESP32 setup guide](LIVE_CAPTURE.md), then choose **Live Arduino** in the app. Grove GSR calibration is required before inference; the first result normally arrives after about 45 seconds.
 
 ```python
 from stress_inference import StressPredictor
