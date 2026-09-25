@@ -6,6 +6,10 @@ Arduino IDE uploads the firmware. After upload, the website reads the USB serial
 
 ## 1. Wire the sensors
 
+![AI Corti ESP32, MAX30102 and Grove GSR wiring](assets/corti-wiring.png)
+
+[Download the scalable wiring diagram](assets/corti-wiring.svg). The drawing shows logical connections, not physical header positions.
+
 The sketch defaults below are for a **classic ESP32 DevKit**. Change the constants for your actual board and wiring, especially if using an ESP32-C3/S3.
 
 | Sensor connection | ESP32 default |
