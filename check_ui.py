@@ -2,6 +2,7 @@
 from io import BytesIO
 from pathlib import Path
 import sys
+import subprocess
 
 import numpy as np
 from streamlit.testing.v1 import AppTest
@@ -10,6 +11,17 @@ import streamlit_app as ui
 
 
 def check():
+    # Check the whole tracked source tree: conflict markers can break tests/docs too.
+    root = Path(__file__).parent
+    names = subprocess.check_output(["git", "ls-files", "-z"], cwd=root).decode().split("\0")
+    for name in names:
+        path = root / name
+        if path.suffix in {".py", ".md", ".css", ".js", ".cjs"} and path.is_file():
+            source = path.read_text(encoding="utf-8")
+            assert not any(line.startswith(("<<<<<<< ", ">>>>>>> ", "||||||| ")) or line == "======="
+                           for line in source.splitlines()), f"Unresolved merge conflict: {name}"
+            if path.suffix == ".py":
+                compile(source, str(path), "exec")
     scores = ui.binary_scores([.35, .40, .25], ["Baseline", "Stress", "Amusement"])
     assert np.isclose(scores["No stress"], .60) and max(scores, key=scores.get) == "No stress"
     scores = ui.binary_scores([.70, .10, .20], ["Stress", "Amusement", "Baseline"])
@@ -42,10 +54,6 @@ def check():
     assert any('No stress = Baseline + Amusement' in item.value for item in app.caption)
     assert any('Deployed model:' in item.value for item in app.caption)
     assert "tensorflow" not in sys.modules, "Landing page eagerly loaded TensorFlow"
-<<<<<<< Updated upstream
-    app.radio[1].set_value("Sample demo").run()
-    assert not app.button[0].disabled
-=======
     page = [x.value for x in app.markdown if "<style>" not in x.value]
     assert not any("result-label" in x for x in page), "Result shown before analysis"
     assert any("A little clarity awaits" in x for x in page), "Insight panel should wait beside the input"
@@ -54,10 +62,9 @@ def check():
              for marker in ('class="hero"', "Watch the intro", '<ol class="pipeline"', "Your Corti check-in",
                             '<span class="step">01', '<span class="step">02')]
     assert order == sorted(order), order
-    app.radio[0].set_value("Sample demo").run()
+    app.radio(key="input_source").set_value("Sample demo").run()
     assert not app.button[0].disabled and app.button[0].label == "Analyze sample"
     assert any("Select Analyze sample" in x.value for x in app.markdown)
->>>>>>> Stashed changes
     app.button[0].click().run()
     assert not app.exception and not app.error, [x.value for x in app.error]
     result = app.session_state.corti_analysis["timeline"]
@@ -65,27 +72,21 @@ def check():
     assert not valid.empty and set(valid.prediction) <= set(ui.COLORS)
     assert "Baseline" not in result.columns and "Amusement" not in result.columns
     assert np.allclose(valid[list(ui.COLORS)].sum(axis=1), 1, atol=1e-5)
-<<<<<<< Updated upstream
-    assert any("SAMPLE DEMO" in x.value for x in app.markdown)
-    app.radio[1].set_value("Upload recording").run()
-    assert not app.exception and app.button[0].disabled
-    assert any("A little clarity awaits" in x.value for x in app.markdown)
-    assert not any("result-label" in x.value for x in app.markdown if "<style>" not in x.value)
-    app.radio[0].set_value("Live Arduino").run()
-    assert not app.exception and len(app.get("component_instance")) == 1
-    assert any("Connect Arduino to begin" in x.value for x in app.info)
-=======
     assert set(valid.pulse) <= {"regular", "irregular"}
     page = [x.value for x in app.markdown if "<style>" not in x.value]
     for text in ("SAMPLE DEMO", "result-label", "Whole recording", "Pulse quality", 'class="reaction'):
         assert any(text in x for x in page), f"Insight panel is missing {text!r}"
     assert not any("A little clarity awaits" in x for x in page)
     assert len(app.get("plotly_chart")) == 1
-    app.radio[0].set_value("Upload recording").run()
+    app.radio(key="input_source").set_value("Upload recording").run()
     assert not app.exception and app.button[0].disabled and app.button[0].label == "Analyze recording"
     page = [x.value for x in app.markdown if "<style>" not in x.value]
     assert not any("result-label" in x for x in page) and any("A little clarity awaits" in x for x in page)
->>>>>>> Stashed changes
+    app.radio(key="capture_mode").set_value("Live Arduino").run()
+    assert not app.exception and len(app.get("component_instance")) == 1
+    assert any("Connect Arduino to begin" in x.value for x in app.info)
+    app.radio(key="capture_mode").set_value("Recording").run()
+    assert not app.exception and app.button[0].disabled
 
     # The actual saved model is exercised above; test rejection with flat signals too.
     import json

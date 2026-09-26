@@ -88,55 +88,8 @@ def binary_scores(probabilities, labels):
             "Stress": float(scores["Stress"])}
 
 
-<<<<<<< Updated upstream
-def pipeline_diagram(steps):
-    """An ordered, responsive block diagram; arrows are decorative CSS."""
-    blocks = ''.join(f'<li><span class="phase">{escape(phase)}</span>'
-                     f'<strong>{escape(title)}</strong><p>{escape(detail)}</p></li>'
-                     for phase, title, detail in steps)
-    st.markdown(f'<ol class="pipeline">{blocks}</ol>', unsafe_allow_html=True)
-
-
-def show_pipeline(config):
-    c = config["preprocessing"]
-    model_type = config.get("model_type", "Unspecified model")
-    model_name = {"residual_1d_cnn_bilstm_attention": "CNN–BiLSTM + attention"}.get(
-        model_type, model_type.replace("_", " "))
-    with st.expander("How AI Corti works"):
-        prediction, notebook, architecture = st.tabs(["Prediction flow", "Notebook · OSEMN", "Neural architecture"])
-        with prediction:
-            pipeline_diagram([
-                ("01", "Capture signals", "Live Arduino or BVP + EDA upload"),
-                ("02", "Clean", "Filter noise and check signal quality"),
-                ("03", "Create windows", f"{c['window_sec']:g}s windows, every {c['stride_sec']:g}s"),
-                ("04", "Prepare inputs", "Normalize BVP + derive EDA channels"),
-                ("05", "Run AI model", "Predict the three trained states"),
-                ("06", "Show result", "Stress or No stress"),
-            ])
-            st.caption("No stress = Baseline + Amusement scores.")
-        with notebook:
-            pipeline_diagram([
-                ("O · Obtain", "Collect", "WESAD signals + ground-truth labels"),
-                ("S · Scrub", "Prepare", "Align, filter and label windows"),
-                ("E · Explore", "Inspect", "Signal quality + class balance"),
-                ("M · Model", "Train & tune", "Test on held-out participants"),
-                ("N · Interpret", "Evaluate", "Precision, recall + confusion matrix"),
-            ])
-            st.caption("Then: select settings → refit on all usable participants → export the app bundle.")
-        with architecture:
-            st.markdown("**Notebook v5 · CNN–Transformer**")
-            pipeline_diagram([
-                ("Input", "BVP + EDA", "Two normalized signal branches"),
-                ("Features", "Multiscale CNNs", "Learn local signal patterns"),
-                ("Fusion", "Cross-modal attention", "Combine both sensors"),
-                ("Sequence", "Transformer", "Learn patterns across the window"),
-                ("Output", "Three class scores", "Baseline · Stress · Amusement"),
-            ])
-            st.caption(f"Currently deployed: {model_name}. The diagram shows notebook v5.")
-=======
 def stress_band(score: float) -> str:
     return next(name for upper, name, _ in BANDS if score <= upper)
->>>>>>> Stashed changes
 
 
 def run_timeline(predictor: StressPredictor, bvp: np.ndarray, eda: np.ndarray) -> pd.DataFrame:
@@ -202,22 +155,6 @@ def analyze(bvp: np.ndarray, eda: np.ndarray) -> None:
     st.session_state.corti_analysis = {"fingerprint": input_fingerprint(), "timeline": timeline}
     st.rerun()  # Lay the page out again so both panels reflect the new result.
 
-<<<<<<< Updated upstream
-    mode = st.radio("Capture mode", ["Recording", "Live Arduino"], horizontal=True)
-    if mode == "Live Arduino":
-        from live_capture import show_live
-        show_live(load_predictor, binary_scores, preprocessing)
-        show_pipeline(config)
-        st.caption("AI Corti · Research prototype. Does not measure cortisol or provide a diagnosis.")
-        return
-    st.session_state.pop("corti_live", None)
-    left, right = st.columns([1.1, 1], gap="medium")
-    fingerprint, bvp, eda, error = None, None, None, None
-    with left, st.container(border=True):
-        st.markdown('<div class="panel-heading"><span class="step">01</span> Add your signals</div><div class="panel-sub">Start with a recording, or explore with a sample.</div>', unsafe_allow_html=True)
-        source = st.radio("Input source", ["Upload recording", "Sample demo"], horizontal=True, label_visibility="collapsed")
-        if source == "Upload recording":
-=======
 
 def render_style():
     if STYLE_PATH.is_file():
@@ -283,7 +220,6 @@ def render_uploader(preprocessing, minimum: float, timeline: pd.DataFrame | None
                           key="input_source")
         bvp, eda, error = None, None, None
         if source == UPLOAD:
->>>>>>> Stashed changes
             bvp_file = st.file_uploader(f"Pulse / BVP · {preprocessing['bvp_fs']:g} Hz", type=["csv", "txt"], key="bvp_upload")
             eda_file = st.file_uploader(f"Skin response / EDA · {preprocessing['eda_fs']:g} Hz", type=["csv", "txt"], key="eda_upload")
             st.caption(f"Same session and start time · at least {minimum:g} seconds each")
@@ -409,7 +345,7 @@ def render_how_it_works(config):
     prediction, notebook, architecture = st.tabs(["Prediction flow", "Notebook · OSEMN", "Neural architecture"])
     with prediction:
         pipeline_diagram([
-            ("01", "Upload signals", "Pulse (BVP) + skin response (EDA)"),
+            ("01", "Capture signals", "Live Arduino or BVP + EDA upload"),
             ("02", "Clean", "Filter noise and check signal quality"),
             ("03", "Create windows", f"{c['window_sec']:g}s windows, every {c['stride_sec']:g}s"),
             ("04", "Prepare inputs", "Normalize BVP + derive EDA channels"),
@@ -461,6 +397,13 @@ def main():
     render_intro(config)
     st.markdown('<div class="section-title"><h2>Your Corti check-in</h2>'
                 '<span>A recording. An analysis. An insight.</span></div>', unsafe_allow_html=True)
+    mode = st.radio("Capture mode", ["Recording", "Live Arduino"], horizontal=True, key="capture_mode")
+    if mode == "Live Arduino":
+        from live_capture import show_live
+        show_live(load_predictor, binary_scores, preprocessing)
+        render_footer()
+        return
+    st.session_state.pop("corti_live", None)
     timeline = current_result()
     # 3 · Both steps stay in view: the insight panel waits beside the input until there is a result.
     left, right = st.columns([1.1, 1], gap="medium")

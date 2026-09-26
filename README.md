@@ -16,16 +16,12 @@ A hybrid 1D-CNN + BiLSTM + attention model that classifies wrist-worn BVP (blood
 |---|---|
 | `hrv-based-stress-classification-using-the-wesad.ipynb` | End-to-end training pipeline: data ingestion, signal preprocessing, model definition, LOSO evaluation, final refit, and app bundle export. |
 | `stress_inference.py` | Shared preprocessing + inference module (identical code embedded in the notebook). Loads the bundled model and runs sliding-window predictions. |
-<<<<<<< Updated upstream
 | `streamlit_app.py` | Web UI — live ESP32 capture, uploaded BVP/EDA recordings, and sample demo. |
 | `live_capture.py`, `serial_component/` | Browser USB capture, sample validation/resampling, and live predictions. |
 | `arduino/corti_capture/corti_capture.ino` | ESP32 + MAX30102 + Grove GSR firmware. |
 | `LIVE_CAPTURE.md` | Wiring, calibration and live capture instructions. |
-=======
-| `streamlit_app.py` | Web UI — upload BVP/EDA files, view predictions and probability timelines. |
 | `assets/` | App stylesheet (`style.css`) and the trailer video. |
 | `check_ui.py` | App and inference checks — run `python check_ui.py`. |
->>>>>>> Stashed changes
 | `stress_model.keras` | Trained model weights (final refit on all usable participants). |
 | `model_config.json` | Preprocessing parameters, class names, input shapes, trained-subject list, and integrity hashes tying the config to the model/inference code. |
 | `results.html` | Standalone results report: metrics, sensor-ablation analysis, and known limitations. |
