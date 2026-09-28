@@ -66,9 +66,12 @@ def decode_session(packet):
 @st.fragment(run_every=1)
 def show_live(load_predictor, binary_scores, config):
     """The browser owns USB; each Streamlit session owns its latest result."""
-    left, right = st.columns([1.1, 1], gap="medium")
+    left, bridge, right = st.columns([1.1, .16, 1], gap="small")
     with left, st.container(border=True):
-        st.markdown("#### Connect your sensors")
+        st.markdown('''<div class="corti-board"><span class="board-usb" aria-hidden="true"></span>
+<div class="board-top"><span>AI CORTI / ESP32</span><span class="board-led" aria-hidden="true"></span></div>
+<div class="board-body"><div class="board-chip" aria-hidden="true">∿</div><div><h4>Connect your sensors</h4><p>Two signals. One connection.</p></div></div>
+<div class="board-pins" aria-hidden="true"><span>BVP</span><span>GSR</span><span>USB</span></div></div>''', unsafe_allow_html=True)
         st.caption("Chrome or Edge on your PC · close Arduino Serial Monitor first")
         packet = serial_capture(key="corti_usb", default=None)
         st.caption("First result in about 45 seconds · refreshes every 5 seconds · sessions up to 10 minutes")
@@ -112,8 +115,12 @@ def show_live(load_predictor, binary_scores, config):
         except Exception as exc:
             state["message"] = "Could not read this session. Check the connection and sensor setup."
             state["error"] = str(exc)
+    with bridge:
+        st.markdown('''<div class="corti-link" role="img" aria-label="Illustration: signals flow from the sensors to AI Corti"><span></span><span></span><span></span><b aria-hidden="true">→</b></div>''', unsafe_allow_html=True)
     with right, st.container(border=True):
-        st.markdown("#### Your live insight")
+        st.markdown('''<div class="corti-monitor"><div class="monitor-top"><span>AI CORTI / INSIGHT</span><span>◌</span></div>
+<h4>Your live insight</h4><svg viewBox="0 0 500 90" preserveAspectRatio="none" aria-hidden="true"><path d="M0 48 H75 L88 42 L100 48 H135 L146 60 L160 12 L176 78 L188 48 H248 L262 39 L277 48 H315 L328 60 L342 12 L358 78 L370 48 H500"/></svg>
+<small>Monitor illustration · not an ECG</small></div>''', unsafe_allow_html=True)
         fresh = monotonic() - state.get("received", -1e9) <= 12
         scores = state.get("scores") if fresh else None
         if scores:

@@ -27,11 +27,25 @@ class CortiSession {
   }
 }
 
-if (typeof module !== "undefined") module.exports = {CortiSession};
+function shouldBeep(enabled, active, now, lastSample, lastBeep) {
+  return enabled && active && now - lastSample < 1000 && now - lastBeep >= 1200;
+}
+if (typeof module !== "undefined") module.exports = {CortiSession, shouldBeep};
 if (typeof document !== "undefined") {
   const connect = document.getElementById("connect"), stop = document.getElementById("stop");
   const status = document.getElementById("status"), readings = document.getElementById("readings");
   const canvas = document.getElementById("wave"), ctx = canvas.getContext("2d");
+  const sound = document.getElementById("sound");
+  let audio, soundEnabled = false, lastBeep = 0;
+  sound.onclick = async () => {
+    try {
+      audio ??= new AudioContext();
+      await audio.resume();
+      soundEnabled = !soundEnabled;
+      sound.textContent = `Monitor sound: ${soundEnabled ? "on" : "off"}`;
+      sound.setAttribute("aria-pressed", String(soundEnabled));
+    } catch (_) { sound.textContent = "Sound unavailable"; soundEnabled = false; }
+  };
   let port, reader, timer, session, sessionId, revision = 0, pending = "", lastSample = 0;
   let active = false, closing = false, lastPublished = 0, lastParent = performance.now();
   const send = (type, data) => window.parent.postMessage({isStreamlitMessage: true, type, ...data}, "*");
@@ -93,6 +107,16 @@ if (typeof document !== "undefined") {
         if (now - lastParent > 15000) { disconnect("Website connection lost. Reconnect to start again."); return; }
         if (now - lastSample > 5000) { disconnect("No sensor data. Check USB and upload the Corti sketch."); return; }
         paint();
+        if (session.rows.length && shouldBeep(soundEnabled, active, now, lastSample, lastBeep)) {
+          const oscillator = audio.createOscillator(), gain = audio.createGain();
+          oscillator.frequency.value = 880;
+          gain.gain.setValueAtTime(.025, audio.currentTime);
+          gain.gain.exponentialRampToValueAtTime(.001, audio.currentTime + .08);
+          oscillator.connect(gain); gain.connect(audio.destination);
+          oscillator.start(); oscillator.stop(audio.currentTime + .09);
+          oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
+          lastBeep = now;
+        }
         if (session.rows.length && now - lastPublished >= 5000) publish("streaming", "Receiving signals");
       }, 250);
       while (active) {
@@ -121,7 +145,7 @@ if (typeof document !== "undefined") {
   window.addEventListener("message", event => {
     if (event.source === window.parent && event.data?.type === "streamlit:render") {
       lastParent = performance.now();
-      send("streamlit:setFrameHeight", {height: 190});
+      send("streamlit:setFrameHeight", {height: document.body.scrollHeight});
     }
   });
   document.addEventListener("visibilitychange", () => {
@@ -134,5 +158,5 @@ if (typeof document !== "undefined") {
     status.textContent = "Open this app directly in desktop Chrome or Edge over HTTPS (or localhost) to connect USB.";
   }
   send("streamlit:componentReady", {apiVersion: 1});
-  send("streamlit:setFrameHeight", {height: 190});
+  send("streamlit:setFrameHeight", {height: document.body.scrollHeight});
 }

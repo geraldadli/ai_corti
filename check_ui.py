@@ -42,6 +42,12 @@ def check():
 
     path = Path(__file__).with_name("streamlit_app.py")
     app = AppTest.from_file(str(path), default_timeout=90).run()
+    assert not app.exception and app.radio(key="capture_mode").value == "Live Arduino"
+    assert len(app.get("component_instance")) == 1
+    assert any('class="corti-board"' in x.value for x in app.markdown)
+    assert any('class="corti-monitor"' in x.value for x in app.markdown)
+    assert "tensorflow" not in sys.modules, "Live landing page eagerly loaded TensorFlow"
+    app.radio(key="capture_mode").set_value("Recording").run()
     assert not app.exception and app.button[0].disabled
     assert path.with_name("assets").joinpath("corti-trailer.mp4").is_file()
     assert path.with_name("assets").joinpath("style.css").is_file()

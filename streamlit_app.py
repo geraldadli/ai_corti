@@ -397,7 +397,7 @@ def main():
     render_intro(config)
     st.markdown('<div class="section-title"><h2>Your Corti check-in</h2>'
                 '<span>A recording. An analysis. An insight.</span></div>', unsafe_allow_html=True)
-    mode = st.radio("Capture mode", ["Recording", "Live Arduino"], horizontal=True, key="capture_mode")
+    mode = st.radio("Capture mode", ["Live Arduino", "Recording"], horizontal=True, key="capture_mode")
     if mode == "Live Arduino":
         from live_capture import show_live
         show_live(load_predictor, binary_scores, preprocessing)

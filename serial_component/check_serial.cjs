@@ -1,6 +1,11 @@
 // Run: node serial_component/check_serial.cjs
 const assert = require("node:assert/strict");
-const {CortiSession} = require("./serial.js");
+const {CortiSession, shouldBeep} = require("./serial.js");
+assert.equal(shouldBeep(false, true, 2000, 1990, 0), false);
+assert.equal(shouldBeep(true, false, 2000, 1990, 0), false);
+assert.equal(shouldBeep(true, true, 2000, 0, 0), false);
+assert.equal(shouldBeep(true, true, 2000, 1990, 1800), false);
+assert.equal(shouldBeep(true, true, 2000, 1990, 0), true);
 const s = new CortiSession();
 assert.equal(s.accept("boot text"), false);
 s.accept("CORTI,1,64,4,1,1023");
