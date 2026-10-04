@@ -67,26 +67,36 @@ def check():
     result_max = predictor.predict_latest(b, e)
     assert result_max["status"] == "ok" and not result_max["quality_warning"]
 
+    def live_result(app):
+        return next((x.value for x in app.markdown if 'class="live-result"' in x.value), None)
+
     app = AppTest.from_file(str(folder / "streamlit_app.py"), default_timeout=90).run()
     app.radio[0].set_value("Live Arduino").run()
     with patch("live_capture.serial_capture", return_value=packet):
         app.run()
-    assert not app.exception and app.metric[0].value in scores
+    shown = live_result(app)
+    assert not app.exception and shown and max(scores, key=scores.get) in shown
+    assert any(">LIVE<" in x.value for x in app.markdown if 'class="corti-monitor"' in x.value)
     app.session_state["corti_live"]["received"] -= 20
     with patch("live_capture.serial_capture", return_value=packet):
         app.run()
-    assert not app.metric and any("paused" in item.value for item in app.info)
+    assert not live_result(app) and any("paused" in item.value for item in app.info)
     packet["revision"] += 1
     packet["calibrated"] = False
     with patch("live_capture.serial_capture", return_value=packet):
         app.run()
-    assert not app.metric and any("calibration" in item.value for item in app.info)
-    packet["revision"] += 1
+    assert not live_result(app) and any("calibration" in item.value for item in app.info)
+    short = dict(packet, revision=packet["revision"] + 1, calibrated=True, rows=packet["rows"][:64 * 20])
+    with patch("live_capture.serial_capture", return_value=short):
+        app.run()
+    assert not live_result(app) and any("20 / 40 usable seconds" in x.value for x in app.markdown)
+    packet["revision"] += 2
     packet.update(state="disconnected", message="Disconnected", rows=[])
     with patch("live_capture.serial_capture", return_value=packet):
         app.run()
-    assert not app.metric and any("Disconnected" in item.value for item in app.info)
-    print("PASS: live timing, dropped samples, clipping, model inference, calibration gate, stale/disconnected UI")
+    assert not live_result(app) and any("Disconnected" in item.value for item in app.info)
+    print("PASS: live timing, dropped samples, clipping, model inference, calibration gate, collecting progress, "
+          "stale/disconnected UI")
 
 
 if __name__ == "__main__":

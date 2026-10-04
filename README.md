@@ -1,6 +1,6 @@
-# WESAD Stress Classifier
+# AI Corti · Stress, understood
 
-A hybrid 1D-CNN + BiLSTM + attention model that classifies wrist-worn BVP (blood volume pulse) and EDA (electrodermal activity) signals into **Baseline / Stress / Amusement**, trained and evaluated on the [WESAD](https://archive.ics.uci.edu/dataset/465/wesad+wearable+stress+and+affect+detection) dataset, with a Streamlit demo app for interactive inference.
+AI Corti is a research-prototype web app that estimates stress patterns from wrist-style **pulse (BVP)** and **skin response (EDA)** signals. Under the hood is a WESAD Stress Classifier: a hybrid 1D-CNN + BiLSTM + attention model that classifies wrist-worn BVP (blood volume pulse) and EDA (electrodermal activity) signals into **Baseline / Stress / Amusement**, trained and evaluated on the [WESAD](https://archive.ics.uci.edu/dataset/465/wesad+wearable+stress+and+affect+detection) dataset, with a Streamlit app for live ESP32 capture and recorded-file inference. It is not a medical device and does not measure cortisol.
 
 ## Overview
 
@@ -10,18 +10,31 @@ A hybrid 1D-CNN + BiLSTM + attention model that classifies wrist-worn BVP (blood
 - **Evaluation:** Leave-One-Subject-Out (LOSO) cross-validation across 15 participants — subject-mean macro F1 **0.600** (95% CI 0.536–0.662), accuracy **0.673**, ROC-AUC **0.830**. See `results.html` for full details.
 - **Design principle:** the exact preprocessing code used in training is exported byte-for-byte into `stress_inference.py`, so the served app can never silently drift from what was evaluated.
 
+## The app
+
+The interface is a single page with three sections:
+
+1. **Hero** — the motto and an animated illustration of the 30-second signal window.
+2. **How it works** — the intro trailer beside three tabs (*Prediction flow*, *Notebook · OSEMN*, *Neural architecture*).
+3. **Check-in** — switch between two capture modes:
+   - **Live Arduino** — connect an ESP32 + MAX30102 + Grove GSR over USB (Chrome or Edge, via Web Serial). The board card shows the link state, then the *Your live insight* monitor shows collecting progress, the latest **Stress / No stress** label and both scores. See [LIVE_CAPTURE.md](LIVE_CAPTURE.md).
+   - **Recording** — upload a BVP and an EDA file, or run the generated sample. Results show the label, a stress-score gauge, a pulse-regularity badge, a whole-recording summary, a CSV export and a *Session details* chart and table.
+
+The look is defined in `assets/style.css` (DM Sans + Manrope, forest-green palette). Streamlit's theme lives in `.streamlit/config.toml`.
+
 ## Repository structure
 
 | File | Purpose |
 |---|---|
 | `hrv-based-stress-classification-using-the-wesad.ipynb` | End-to-end training pipeline: data ingestion, signal preprocessing, model definition, LOSO evaluation, final refit, and app bundle export. |
 | `stress_inference.py` | Shared preprocessing + inference module (identical code embedded in the notebook). Loads the bundled model and runs sliding-window predictions. |
-| `streamlit_app.py` | Web UI — live ESP32 capture, uploaded BVP/EDA recordings, and sample demo. |
-| `live_capture.py`, `serial_component/` | Browser USB capture, sample validation/resampling, and live predictions. |
+| `streamlit_app.py` | Web UI — hero, how-it-works, recording upload, sample demo and results. |
+| `live_capture.py`, `serial_component/` | Live Arduino panel: Web Serial component (`index.html`, `serial.js`), session validation/resampling, and live predictions. |
 | `arduino/corti_capture/corti_capture.ino` | ESP32 + MAX30102 + Grove GSR firmware. |
 | `LIVE_CAPTURE.md` | Wiring, calibration and live capture instructions. |
-| `assets/` | App stylesheet (`style.css`) and the trailer video. |
-| `check_ui.py` | App and inference checks — run `python check_ui.py`. |
+| `assets/` | App stylesheet (`style.css`), trailer video and wiring diagram. |
+| `check_ui.py`, `check_live.py`, `serial_component/check_serial.cjs` | Checks — see [Run the checks](#run-the-checks). |
+| `.streamlit/`, `.devcontainer/` | Streamlit theme/config and the Codespaces/VS Code container. |
 | `stress_model.keras` | Trained model weights (final refit on all usable participants). |
 | `model_config.json` | Preprocessing parameters, class names, input shapes, trained-subject list, and integrity hashes tying the config to the model/inference code. |
 | `results.html` | Standalone results report: metrics, sensor-ablation analysis, and known limitations. |
@@ -35,7 +48,7 @@ A hybrid 1D-CNN + BiLSTM + attention model that classifies wrist-worn BVP (blood
 pip install -r requirements.txt
 ```
 
-(Python 3.11, TensorFlow 2.18 CPU, NumPy, SciPy, Pandas, Streamlit, Plotly — see `requirements.txt` for pinned versions.)
+(Python 3.11, TensorFlow 2.18 CPU, NumPy, SciPy, Pandas, Streamlit — see `requirements.txt` for pinned versions.)
 
 ### Run the demo app
 
@@ -59,6 +72,14 @@ print(result["prediction"], result["probabilities"])
 
 Inputs must be raw, uniformly sampled arrays from the same recording origin (missing samples as `NaN`, not deleted), supplied from session start so filter history is preserved. Do not pre-normalize.
 
+### Run the checks
+
+```bash
+python check_ui.py                      # UI, parsing, gauge, batched inference
+python check_live.py                    # live session decoding, resampling, live UI states (no hardware needed)
+node serial_component/check_serial.cjs  # Web Serial handshake and session limits
+```
+
 ### Retrain / reproduce results
 
 The notebook expects the [WESAD dataset](https://archive.ics.uci.edu/dataset/465/wesad+wearable+stress+and+affect+detection) (`S2`–`S17` folders with synchronized `.pkl` files), available on request from the dataset authors. Open `hrv-based-stress-classification-using-the-wesad.ipynb`, point it at the dataset root, and run end-to-end to reproduce the LOSO evaluation and re-export `stress_app_bundle.zip` (model + config + inference code + results report).
@@ -75,7 +96,7 @@ The model relies more heavily on the BVP (pulse) channel than EDA (sensor-permut
 
 ## Limitations
 
-- Evaluated only on WESAD laboratory recordings; not validated on other PPG/GSR devices, free-living activity, or clinical populations.
+- Evaluated only on WESAD laboratory recordings (Empatica E4); not validated on other PPG/GSR devices, free-living activity, or clinical populations. The live ESP32 MAX30102 + Grove GSR setup is a hardware prototype whose signals differ from the training device.
 - Does not establish or validate any specific physiological biomarker (RMSSD, LF/HF, etc.) — the model learns directly from waveform patterns.
 - The >80% macro F1 target set for this project was not met.
 - `stress_inference.py` is a reference Python/TensorFlow backend, not an optimized real-time (BLE/TFLite/browser) runtime.

@@ -83,14 +83,15 @@ if (typeof document !== "undefined") {
     const points = rows.slice(-5 * fs).map(row => row[2]);
     const finite = points.filter(x => x !== null);
     const lo = Math.min(...finite), span = Math.max(1, Math.max(...finite) - lo);
-    ctx.clearRect(0, 0, 600, 70); ctx.beginPath(); ctx.strokeStyle = "#23796a"; ctx.lineWidth = 2;
+    canvas.classList.add("live");
+    ctx.clearRect(0, 0, 600, 70); ctx.beginPath(); ctx.strokeStyle = "#1b4e40"; ctx.lineWidth = 2;
     points.forEach((v, i) => { if (v !== null) ctx.lineTo(i * 600 / (5 * fs), 62 - (v - lo) / span * 54); });
     ctx.stroke();
   }
   connect.onclick = async () => {
     connect.disabled = true; closing = false;
     session = new CortiSession(); sessionId = crypto.randomUUID(); revision = 0; pending = "";
-    ctx.clearRect(0, 0, 600, 70); readings.textContent = "Pulse + skin response";
+    ctx.clearRect(0, 0, 600, 70); canvas.classList.remove("live"); readings.textContent = "Pulse + skin response";
     publish("connecting", "Connecting Arduino…");
     try {
       port = await navigator.serial.requestPort();

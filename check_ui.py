@@ -83,7 +83,9 @@ def check():
     for text in ("SAMPLE DEMO", "result-label", "Whole recording", "Pulse quality", 'class="reaction'):
         assert any(text in x for x in page), f"Insight panel is missing {text!r}"
     assert not any("A little clarity awaits" in x for x in page)
-    assert len(app.get("plotly_chart")) == 1
+    gauges = [x for x in page if 'class="gauge"' in x]
+    assert len(gauges) == 1 and 'transform="rotate(' in gauges[0] and "stress score" in gauges[0]
+    assert sum(x.count('class="session-table"') for x in page) == 1
     app.radio(key="input_source").set_value("Upload recording").run()
     assert not app.exception and app.button[0].disabled and app.button[0].label == "Analyze recording"
     page = [x.value for x in app.markdown if "<style>" not in x.value]

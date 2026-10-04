@@ -1,4 +1,5 @@
 """USB session validation and live UI. The trained preprocessing stays unchanged."""
+from html import escape
 from pathlib import Path
 from time import monotonic
 
@@ -9,6 +10,11 @@ import streamlit as st
 from streamlit.components.v1 import declare_component
 
 MAX_SECONDS = 600
+CHIP_GLYPH = ('<svg width="30" height="30" viewBox="0 0 32 32"><path d="M5 17.5h6.5l2.2-5.5 3.6 10 2.4-4.5h3.8" '
+              'fill="none" stroke="#d6ecb6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+              '<circle cx="26.5" cy="17.5" r="1.9" fill="#d6ecb6"/></svg>')
+MONITOR_TRACE = ("M0 48 H75 L88 42 L100 48 H135 L146 60 L160 12 L176 78 L188 48 H248 L262 39 L277 48 "
+                 "H315 L328 60 L342 12 L358 78 L370 48 H500")
 serial_capture = declare_component("corti_serial", path=str(Path(__file__).with_name("serial_component")))
 
 
@@ -64,16 +70,20 @@ def decode_session(packet):
 
 
 @st.fragment(run_every=1)
-def show_live(load_predictor, binary_scores, config):
+def show_live(load_predictor, binary_scores, config, colors):
     """The browser owns USB; each Streamlit session owns its latest result."""
     left, bridge, right = st.columns([1.1, .16, 1], gap="small")
     with left, st.container(border=True):
-        st.markdown('''<div class="corti-board"><span class="board-usb" aria-hidden="true"></span>
-<div class="board-top"><span>AI CORTI / ESP32</span><span class="board-led" aria-hidden="true"></span></div>
-<div class="board-body"><div class="board-chip" aria-hidden="true">∿</div><div><h4>Connect your sensors</h4><p>Two signals. One connection.</p></div></div>
-<div class="board-pins" aria-hidden="true"><span>BVP</span><span>GSR</span><span>USB</span></div></div>''', unsafe_allow_html=True)
+        board = st.empty()  # Drawn once the packet is known, so the LED can show the link state.
         st.caption("Chrome or Edge on your PC · close Arduino Serial Monitor first")
         packet = serial_capture(key="corti_usb", default=None)
+        linked = isinstance(packet, dict) and packet.get("state") in ("connecting", "streaming")
+        board.markdown(f'<div class="corti-board"><div class="board-top"><span>AI CORTI / ESP32</span>'
+                       f'<span class="board-led{" on" if linked else ""}" aria-hidden="true"></span></div>'
+                       f'<div class="board-body"><div class="board-chip" aria-hidden="true">{CHIP_GLYPH}</div>'
+                       '<div><h4>Connect your sensors</h4><p>Two signals. One connection.</p></div></div>'
+                       '<div class="board-pins" aria-hidden="true"><span>BVP</span><span>GSR</span><span>USB</span></div></div>',
+                       unsafe_allow_html=True)
         st.caption("First result in about 45 seconds · refreshes every 5 seconds · sessions up to 10 minutes")
         with st.expander("Arduino setup"):
             st.markdown("1. Upload `arduino/corti_capture/corti_capture.ino` using Arduino IDE.\n"
@@ -96,7 +106,7 @@ def show_live(load_predictor, binary_scores, config):
                 if packet.get("calibrated") is not True:
                     state["message"] = "Receiving signals. GSR calibration to µS is required before prediction."
                 elif state["seconds"] < config["window_sec"] + config["warmup_sec"]:
-                    state["message"] = f"Collecting signals · {state['seconds']:.0f} / 40 usable seconds"
+                    state["collecting"] = state["seconds"]
                 else:
                     # ponytail: replay full history, capped at 10 minutes; add stateful filters for longer sessions.
                     prediction = load_predictor().predict_latest(bvp, eda)
@@ -116,19 +126,31 @@ def show_live(load_predictor, binary_scores, config):
             state["message"] = "Could not read this session. Check the connection and sensor setup."
             state["error"] = str(exc)
     with bridge:
-        st.markdown('''<div class="corti-link" role="img" aria-label="Illustration: signals flow from the sensors to AI Corti"><span></span><span></span><span></span><b aria-hidden="true">→</b></div>''', unsafe_allow_html=True)
+        st.markdown('<div class="corti-link" role="img" aria-label="Illustration: signals flow from the sensors to AI Corti">'
+                    '<span></span><span></span><span></span><b aria-hidden="true"></b></div>', unsafe_allow_html=True)
+    fresh = monotonic() - state.get("received", -1e9) <= 12
+    scores = state.get("scores") if fresh else None
     with right, st.container(border=True):
-        st.markdown('''<div class="corti-monitor"><div class="monitor-top"><span>AI CORTI / INSIGHT</span><span>◌</span></div>
-<h4>Your live insight</h4><svg viewBox="0 0 500 90" preserveAspectRatio="none" aria-hidden="true"><path d="M0 48 H75 L88 42 L100 48 H135 L146 60 L160 12 L176 78 L188 48 H248 L262 39 L277 48 H315 L328 60 L342 12 L358 78 L370 48 H500"/></svg>
-<small>Monitor illustration · not an ECG</small></div>''', unsafe_allow_html=True)
-        fresh = monotonic() - state.get("received", -1e9) <= 12
-        scores = state.get("scores") if fresh else None
+        st.markdown(f'<div class="corti-monitor"><div class="monitor-top"><span>AI CORTI / INSIGHT</span>'
+                    f'<span>{"LIVE" if scores else "◌"}</span></div><h4>Your live insight</h4>'
+                    f'<svg viewBox="0 0 500 90" preserveAspectRatio="none" aria-hidden="true"><path d="{MONITOR_TRACE}"/></svg>'
+                    '<small>Monitor illustration · not an ECG</small></div>', unsafe_allow_html=True)
+        needed = config["window_sec"] + config["warmup_sec"]
         if scores:
             label = max(scores, key=scores.get)
-            st.metric("Latest window", label)
-            st.caption(f"{state['end'] - config['window_sec']:g}–{state['end']:g} seconds · relative model scores")
-            for name, value in scores.items():
-                st.progress(float(value), text=f"{name} · {value:.0%}")
+            bars = "".join(f'<div class="score-bar"><div><span>{escape(name)}</span><b>{value:.0%}</b></div>'
+                           f'<div class="track"><div style="width:{100 * value:.1f}%;background:{colors.get(name, "#1b4e40")}"></div></div></div>'
+                           for name, value in scores.items())
+            st.markdown(f'<div class="live-result"><div class="live-kicker">Latest window</div>'
+                        f'<div class="live-label" style="color:{colors.get(label, "#183d36")}">{escape(label)}</div>'
+                        f'<div class="live-kicker">{state["end"] - config["window_sec"]:g}–{state["end"]:g} seconds · '
+                        f'relative model scores</div>{bars}</div>', unsafe_allow_html=True)
+        elif fresh and "collecting" in state:
+            seconds = state["collecting"]
+            st.markdown(f'<div class="collecting" role="status"><div><span>Collecting signals</span>'
+                        f'<span>{seconds:.0f} / {needed:g} usable seconds</span></div>'
+                        f'<div class="track"><div style="width:{min(100, 100 * seconds / needed):.0f}%"></div></div></div>',
+                        unsafe_allow_html=True)
         else:
             message = state.get("message", "Connect Arduino to begin.")
             if not fresh and packet and packet.get("state") == "streaming":
